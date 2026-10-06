@@ -1,4 +1,4 @@
-// A lábléc: ki készítette, és hol olvasható az adatkezelési tájékoztató.
+// A lábléc: ki készítette, hol olvasható az adatkezelési tájékoztató, és hol van a forráskód.
 // A linket továbbküldik, ezért a készítő nevének az oldalon is rajta kell lennie.
 // Külön komponens, mert a főoldal és az adatkezelési tájékoztató is ezt használja.
 import Link from "next/link";
@@ -16,6 +16,14 @@ export function SiteFooter() {
             Adatkezelési tájékoztató
           </Link>
           {/* A rel="noopener noreferrer" miatt az új lapon megnyíló oldal nem fér hozzá ehhez a laphoz. */}
+          <a
+            className="button-text"
+            href="https://github.com/brandaholic91/ajanlatkeszito"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Forráskód (GitHub)
+          </a>
           <a
             className="button-text"
             href="https://www.linkedin.com/in/holikbalazs/"
