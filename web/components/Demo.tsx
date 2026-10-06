@@ -31,7 +31,7 @@ export function Demo() {
   // Az állapot figyelése: a hook fél másodpercenként lekérdezi a kérést, amíg van mire várni.
   // Hiba után megáll, különben egy elakadt kérést örökké figyelne.
   const failed = submitError !== null || approveError !== null;
-  const { status, error: pollError } = useRequestStatus(publicId, submitting || approving, failed);
+  const { status, error: pollError, awaitingReminder } = useRequestStatus(publicId, submitting || approving, failed);
 
   // Ezek nem külön állapotok, hanem a fentiekből minden kirajzoláskor újraszámolt értékek.
   const events = status === null ? [] : status.events;
@@ -39,7 +39,8 @@ export function Demo() {
   // waiting: a napló szerint a rendszer még dolgozik (nem a nézőre vár).
   const waiting = !failed && status !== null && isInProgress(events);
   const processingRunning = !failed && approval.length === 0 && (submitting || waiting);
-  const approvalRunning = !failed && (approving || (approval.length > 0 && waiting));
+  // Az elküldött ajánlat után a jóváhagyás szakasza még az emlékeztetőre vár, ezért addig "fut".
+  const approvalRunning = !failed && (approving || (approval.length > 0 && (waiting || awaitingReminder)));
 
   // Az óra a beküldéstől addig fut, amíg a feldolgozás (az első szakasz) tart.
   const elapsed = useElapsed(startedAt, processingRunning);

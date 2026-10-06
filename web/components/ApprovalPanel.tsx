@@ -7,8 +7,8 @@ import { ErrorMessage } from "./ErrorMessage";
 import { AlertIcon, DoneIcon, DownloadIcon, SpinnerIcon } from "./Icons";
 import { StepList } from "./StepList";
 
-// A jóváhagyás szokásos lépései, sorrendben.
-const APPROVAL_STEPS = ["approved", "pdf_stored", "sent"];
+// A jóváhagyás szokásos lépései, sorrendben. Az utolsó az emlékeztető, amely percekkel a levél után megy.
+const APPROVAL_STEPS = ["approved", "pdf_stored", "sent", "reminded"];
 
 type ApprovalPanelProps = {
   publicId: string;

@@ -29,6 +29,7 @@ export const UPCOMING_STEP_LABELS: Record<string, string> = {
   approved: "Jóváhagyás",
   pdf_stored: "PDF készítése és tárolása",
   sent: "E-mail küldése",
+  reminded: "Emlékeztető küldése",
 };
 
 // Az utolsó elkészült lépés -> min dolgozik éppen a rendszer. Ezt írja ki az oldal a lista alján, amíg vár.
@@ -38,6 +39,7 @@ export const NEXT_STEP_LABELS: Record<string, string> = {
   checked: "Árazás…",
   approved: "A PDF készül…",
   pdf_stored: "Az e-mail küldése…",
+  sent: "Az emlékeztető kb. 2 perc múlva megy…",
 };
 
 // Ha még egyetlen lépés sincs a naplóban.
@@ -62,6 +64,20 @@ export function isInProgress(events: RequestEvent[]): boolean {
   }
   const lastStep = events[events.length - 1].step;
   return !RESTING_STEPS.includes(lastStep);
+}
+
+// Az ajánlat kiküldése után ennyi ideig figyeljük még, hogy megjön-e az emlékeztető. A demóban 2 perc után megy,
+// percenként egy futással; a 10 perc bőven elég rá, és nem figyelünk örökké, ha a levélkeret miatt kimarad.
+const REMINDER_WAIT_MS = 10 * 60 * 1000;
+
+// Igaz, ha az utolsó lépés az elküldött e-mail, és még belül vagyunk a várakozási időn.
+// A "now" paraméter a mostani idő ezredmásodpercben (Date.now()); azért kapja kívülről, hogy a függvény tiszta maradjon.
+export function awaitsReminder(events: RequestEvent[], now: number): boolean {
+  if (events.length === 0) {
+    return false;
+  }
+  const last = events[events.length - 1];
+  return last.step === "sent" && now - Date.parse(last.at) < REMINDER_WAIT_MS;
 }
 
 // A napló két szakasza: a feldolgozás (az "approved" előtti lépések) és a jóváhagyás (az "approved"-tól).
