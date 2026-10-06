@@ -16,6 +16,17 @@ export const STEP_LABELS: Record<string, string> = {
   email_skipped: "Az e-mail kimaradt, mert betelt a napi levélkeret",
 };
 
+// Ugyanezek a lépések, amíg még nem történtek meg: a lista előre kiírja őket, ezért nem állhatnak múlt időben.
+export const UPCOMING_STEP_LABELS: Record<string, string> = {
+  received: "A kérés beérkezése",
+  extracted: "Tételek kiolvasása nyelvi modellel",
+  checked: "Ellenőrzés",
+  priced: "Árazás az adatbázisból",
+  approved: "Jóváhagyás",
+  pdf_stored: "PDF készítése és tárolása",
+  sent: "E-mail küldése",
+};
+
 // Az utolsó elkészült lépés -> min dolgozik éppen a rendszer. Ezt írja ki az oldal a lista alján, amíg vár.
 export const NEXT_STEP_LABELS: Record<string, string> = {
   received: "A nyelvi modell olvassa a kérést…",
@@ -34,6 +45,10 @@ const RESTING_STEPS = ["priced", "needs_clarification", "sent", "email_skipped"]
 export function stepLabel(step: string): string {
   // Ismeretlen lépésnél (ha később új kerül a naplóba) a nyers név is jobb, mint a semmi.
   return STEP_LABELS[step] ?? step;
+}
+
+export function upcomingStepLabel(step: string): string {
+  return UPCOMING_STEP_LABELS[step] ?? stepLabel(step);
 }
 
 // Igaz, ha a napló utolsó lépése után még várunk valamire (tehát érdemes tovább kérdezgetni).

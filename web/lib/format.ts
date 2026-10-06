@@ -1,6 +1,8 @@
 // Számok és idők kiírása magyarul.
 
-const numberFormat = new Intl.NumberFormat("hu-HU");
+// A useGrouping: "always" nélkül a magyar szabály a négyjegyű számot nem tagolja ("8991"), az ötjegyűt igen
+// ("11 748"). Táblázatban, egymás alatt ez egyenetlen, ezért itt mindig tagolunk: "8 991".
+const numberFormat = new Intl.NumberFormat("hu-HU", { useGrouping: "always" });
 
 // 11748670 -> "11 748 670 Ft"
 export function formatForint(amount: number): string {

@@ -2,7 +2,7 @@
 // A sorrend a naplóé (az adatbázis írta be, ilyen sorrendben történt), az oldal nem rendezi át.
 // Háromféle sor van: kész lépés (pipa és idő), az éppen futó lépés (forgó jel), és a még hátralévők (üres kör).
 import { formatSeconds, millisecondsBetween } from "@/lib/format";
-import { NEXT_STEP_LABELS, WAITING_FOR_FIRST_STEP, stepLabel } from "@/lib/steps";
+import { NEXT_STEP_LABELS, WAITING_FOR_FIRST_STEP, stepLabel, upcomingStepLabel } from "@/lib/steps";
 import type { RequestEvent } from "@/lib/types";
 import { AlertIcon, DoneIcon, SpinnerIcon, UpcomingIcon } from "./Icons";
 
@@ -80,7 +80,7 @@ export function StepList({ events, running, planned }: StepListProps) {
           <span className="mt-0.5">
             <UpcomingIcon />
           </span>
-          <span>{stepLabel(step)}</span>
+          <span>{upcomingStepLabel(step)}</span>
           <span className="num text-sm leading-6">–</span>
         </li>
       ))}
