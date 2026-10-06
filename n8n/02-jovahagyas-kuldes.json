@@ -58,7 +58,7 @@
             {
               "id": "9b1f6d2e-5c47-4e0a-8f33-2a7d0c9e4b16",
               "name": "daily_mail_limit",
-              "value": 20,
+              "value": 40,
               "type": "number"
             }
           ]

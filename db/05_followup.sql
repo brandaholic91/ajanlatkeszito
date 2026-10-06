@@ -1,4 +1,6 @@
 -- A harmadik workflow (Utánkövetés és hibakezelés) adatbázis-oldala.
+-- Ez a fájl újra lefuttatható egy már élő adatbázison is (CREATE OR REPLACE, DROP IF EXISTS):
+-- a Postgres az itt lévő fájlokat csak az első indításkor tölti be, a későbbi változást kézzel kell ráfuttatni.
 
 -- Beragadt kérések lezárása. Egy kérés akkor ragad be, ha a workflow félúton elhal:
 --   'received' = bekerült, de a modell válasza sosem jutott el az árazásig,
@@ -6,7 +8,7 @@
 -- A többi állapotban a folyamat szándékosan áll (a nézőre vár, vagy véget ért), azokhoz nem nyúl.
 -- Az 'approved' állapotú, de 'email_skipped' lépésű kérés kész van (a napi keret miatt levél nélkül), az sem beragadt.
 -- A kor az utolsó naplózott lépéstől számít. Kimenet: hány kérést zárt le, és melyeket.
-CREATE FUNCTION fail_stuck_requests(p_older_than_minutes integer DEFAULT 10) RETURNS jsonb
+CREATE OR REPLACE FUNCTION fail_stuck_requests(p_older_than_minutes integer DEFAULT 10) RETURNS jsonb
 LANGUAGE plpgsql AS $$
 DECLARE
     v_request record;
@@ -32,13 +34,16 @@ END;
 $$;
 
 
--- 8. lépés: kinek jár emlékeztető. Akinek az ajánlata legalább p_after_hours órája elment, még érvényes,
--- és még nem kapott emlékeztetőt. A demóban nincs válaszfigyelés, ezért minden kiküldött ajánlat kap egyet.
+-- 8. lépés: kinek jár emlékeztető. Akinek az ajánlata legalább p_after_minutes perce elment, még érvényes,
+-- és még nem kapott emlékeztetőt. A demóban ez 2 perc, hogy a néző kivárhassa; élesben 72 óra (4320 perc) lenne.
+-- A demóban nincs válaszfigyelés, ezért minden kiküldött ajánlat kap egyet.
 -- A függvény a 'reminded' lépést MÉG A KÜLDÉS ELŐTT beírja a naplóba. Ok: ha a levél elmegy, de a naplózás
--- utána elhasalna, a következő futás újra elküldené, és ez óránként ismétlődne. Így egy kérés legfeljebb egy
+-- utána elhasalna, a következő futás újra elküldené, és ez percenként ismétlődne. Így egy kérés legfeljebb egy
 -- emlékeztetőt kap; ha a küldés nem sikerül, a workflow 'reminder_failed' lépést ír mellé, és riaszt.
 -- A napi levélkeret közös az ajánlatokkal: a ma elment ajánlatok és emlékeztetők együtt számítanak.
-CREATE FUNCTION claim_due_reminders(p_after_hours integer DEFAULT 72, p_daily_mail_limit integer DEFAULT 20) RETURNS jsonb
+-- A régi változat órában kapta a várakozást; paramétert átnevezni csak eldobás után lehet.
+DROP FUNCTION IF EXISTS claim_due_reminders(integer, integer);
+CREATE FUNCTION claim_due_reminders(p_after_minutes integer DEFAULT 2, p_daily_mail_limit integer DEFAULT 40) RETURNS jsonb
 LANGUAGE plpgsql AS $$
 DECLARE
     v_room      integer;
@@ -53,7 +58,7 @@ BEGIN
         FROM requests r
         WHERE r.status = 'sent'
           AND (SELECT max(e.at) FROM request_events e WHERE e.request_id = r.id AND e.step = 'sent')
-              < now() - make_interval(hours => p_after_hours)
+              < now() - make_interval(mins => p_after_minutes)
           AND NOT EXISTS (SELECT 1 FROM request_events e WHERE e.request_id = r.id AND e.step = 'reminded')
           AND EXISTS (SELECT 1 FROM quotes q WHERE q.request_id = r.id AND q.valid_until >= current_date)
         ORDER BY r.id

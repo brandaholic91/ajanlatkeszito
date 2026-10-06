@@ -16,7 +16,7 @@
           "interval": [
             {
               "field": "minutes",
-              "minutesInterval": 15
+              "minutesInterval": 1
             }
           ]
         }
@@ -68,13 +68,13 @@
             {
               "id": "24c19508-4d50-4107-a72c-01e9192970d8",
               "name": "daily_mail_limit",
-              "value": 20,
+              "value": 40,
               "type": "number"
             },
             {
               "id": "9f3e9c9e-4fdd-468e-9ed9-542f66b04f09",
-              "name": "followup_after_hours",
-              "value": 72,
+              "name": "followup_after_minutes",
+              "value": 2,
               "type": "number"
             },
             {
@@ -180,7 +180,7 @@
         "operation": "executeQuery",
         "query": "SELECT claim_due_reminders($1::integer, $2::integer) AS result;",
         "options": {
-          "queryReplacement": "={{ [ $('Beállítások').item.json.followup_after_hours, $('Beállítások').item.json.daily_mail_limit ] }}"
+          "queryReplacement": "={{ [ $('Beállítások').item.json.followup_after_minutes, $('Beállítások').item.json.daily_mail_limit ] }}"
         }
       },
       "credentials": {
@@ -221,7 +221,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({\n  from: $('Beállítások').item.json.mail_from,\n  to: [ $json.customer_email ],\n  subject: 'Emlékeztető: a(z) ' + $json.number + ' ajánlat ' + $json.valid_until + '-ig érvényes – Kéktorony Telekom (demó)',\n  html: '<p>Tisztelt Érdeklődő!</p><p>Néhány napja küldtük el a(z) <b>' + $json.number + '</b> sorszámú ajánlatunkat. Az ajánlat <b>' + $json.valid_until + '</b>-ig érvényes, ez még ' + $json.days_left + ' nap.</p><p>Ha kérdése van, vagy módosítana a tételeken, válaszoljon erre a levélre.</p><p>Üdvözlettel:<br>Kéktorony Telekom</p><hr><p style=\"color:#666;font-size:12px\">Ez egy demó. A Kéktorony Telekom kitalált cég, kitalált árakkal; ez nem valós ajánlat. A levelet azért kapta, mert ezt az e-mail-címet adták meg a demóoldalon. Több levelet ehhez az ajánlathoz nem küldünk.</p>'\n}) }}",
+        "jsonBody": "={{ JSON.stringify({\n  from: $('Beállítások').item.json.mail_from,\n  to: [ $json.customer_email ],\n  subject: 'Emlékeztető: a(z) ' + $json.number + ' ajánlat ' + $json.valid_until + '-ig érvényes – Kéktorony Telekom (demó)',\n  html: '<p>Tisztelt Érdeklődő!</p><p>Nemrég küldtük el a(z) <b>' + $json.number + '</b> sorszámú ajánlatunkat. Az ajánlat <b>' + $json.valid_until + '</b>-ig érvényes, ez még ' + $json.days_left + ' nap.</p><p>Ha kérdése van, vagy módosítana a tételeken, válaszoljon erre a levélre.</p><p>Üdvözlettel:<br>Kéktorony Telekom</p><hr><p style=\"color:#666;font-size:12px\">Ez egy demó. A Kéktorony Telekom kitalált cég, kitalált árakkal; ez nem valós ajánlat. A levelet azért kapta, mert ezt az e-mail-címet adták meg a demóoldalon. Éles működésnél az emlékeztető 72 óra után menne; itt 2 perc után megy, hogy a folyamat látható legyen. Több levelet ehhez az ajánlathoz nem küldünk.</p>'\n}) }}",
         "options": {
           "timeout": 30000
         }

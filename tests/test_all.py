@@ -258,18 +258,18 @@ def test_daily_mail_limit_turns_off_sending(db):
         assert result["send_email"] is expected, f"keret: {limit}, ma elment: {sent_today}"
 
 
-def test_default_daily_mail_limit_is_20(db):
-    """A nyilvános demó kerete 20: ez az adatbázis-függvény alapértéke és a repóban lévő workflow beállítása is."""
+def test_default_daily_mail_limit_is_40(db):
+    """A nyilvános demó kerete 40 (egy ajánlat két levél: az ajánlat és az emlékeztető): ez az adatbázis-függvény alapértéke és a repóban lévő workflow beállítása is."""
     (arguments,) = db.execute(
         "SELECT pg_get_function_arguments(oid) FROM pg_proc WHERE proname = 'approve_request'"
     ).fetchone()
-    assert "p_daily_mail_limit integer DEFAULT 20" in arguments
+    assert "p_daily_mail_limit integer DEFAULT 40" in arguments
 
     # a fájl helye ehhez a tesztfájlhoz képest, hogy ne számítson, melyik mappából indul a pytest
     workflow = json.loads((Path(__file__).parent.parent / "n8n/02-jovahagyas-kuldes.json").read_text(encoding="utf-8"))
     nodes = {node["name"]: node for node in workflow["nodes"]}
     settings = {a["name"]: a["value"] for a in nodes["Beállítások"]["parameters"]["assignments"]["assignments"]}
-    assert settings["daily_mail_limit"] == 20
+    assert settings["daily_mail_limit"] == 40
     # a beállítás tényleg eljut a függvényig, második paraméterként
     assert "$2::integer" in nodes["Jóváhagyás"]["parameters"]["query"]
     assert "daily_mail_limit" in nodes["Jóváhagyás"]["parameters"]["options"]["queryReplacement"]
@@ -359,9 +359,9 @@ def test_stuck_check_leaves_waiting_and_finished_requests_alone(db):
 
 
 def test_reminder_goes_out_once(db):
-    """A három napnál régebben kiküldött ajánlat egy emlékeztetőt kap; a következő futás már nem küld újat."""
+    """A két percnél régebben kiküldött ajánlat egy emlékeztetőt kap; a következő futás már nem küld újat."""
     email = f"emlekezteto-{uuid.uuid4().hex[:8]}@example.com"
-    public_id = new_sent_request(db, email, "4 days")
+    public_id = new_sent_request(db, email, "5 minutes")
     assert len(subjects_for(email)) == 1  # eddig csak az ajánlat levele ment el
 
     assert httpx.post(FOLLOWUP, json={}).status_code == 200
@@ -376,9 +376,9 @@ def test_reminder_goes_out_once(db):
 
 
 def test_fresh_quote_gets_no_reminder(db):
-    """A három napnál frissebb ajánlat még nem esedékes."""
+    """A két percnél frissebb ajánlat még nem esedékes."""
     email = f"friss-{uuid.uuid4().hex[:8]}@example.com"
-    public_id = new_sent_request(db, email, "2 days")
+    public_id = new_sent_request(db, email, "1 minute")
     assert httpx.post(FOLLOWUP, json={}).status_code == 200
     time.sleep(3)
     assert len(subjects_for(email)) == 1
@@ -394,12 +394,12 @@ def test_expired_quote_and_full_mail_limit_get_no_reminder(db):
         (expired,),
     )
     db.commit()
-    due = new_sent_request(db, email, "4 days")
+    due = new_sent_request(db, email, "5 minutes")
 
-    assert db.execute("SELECT claim_due_reminders(72, 0)").fetchone()[0]["count"] == 0  # a keret betelt
+    assert db.execute("SELECT claim_due_reminders(2, 0)").fetchone()[0]["count"] == 0  # a keret betelt
     db.rollback()
 
-    reminders = db.execute("SELECT claim_due_reminders(72, 100000)").fetchone()[0]["reminders"]
+    reminders = db.execute("SELECT claim_due_reminders(2, 100000)").fetchone()[0]["reminders"]
     db.rollback()  # csak a függvény válasza kell, levél ne menjen
     request_ids = [reminder["request_id"] for reminder in reminders]
     assert request_row(db, due)[0] in request_ids

@@ -28,15 +28,18 @@ else
 fi
 unset creds
 
-# A workflow-k tesztmásolata. Három dolog más bennük, mint a repóban lévő fájlokban:
+# A workflow-k tesztmásolata. Négy dolog más bennük, mint a repóban lévő fájlokban:
 #   - a modell címe az ál-modellre mutat,
 #   - a levélküldő címe az ál-levélküldőre,
-#   - a napi levélkeret (daily_mail_limit) 20 helyett 100000, hogy a tesztek sose fogyasszák el.
-# A harmadik sed-szabály jelentése: keresd meg a "daily_mail_limit" sort, lépj a következőre (n), és ott cseréld a 20-at.
+#   - a napi levélkeret (daily_mail_limit) 40 helyett 100000, hogy a tesztek sose fogyasszák el,
+#   - az Utánkövetés időzítője percenként helyett negyedóránként fut, hogy ne szóljon bele a tesztekbe:
+#     azok a Kézi indítással hívják, és maguk akarják eldönteni, mikor megy ki egy emlékeztető.
+# A harmadik sed-szabály jelentése: keresd meg a "daily_mail_limit" sort, lépj a következőre (n), és ott cseréld a 40-et.
 for file in n8n/*.json; do
     sed -e 's#https://opencode.ai/zen/go/v1/chat/completions#http://fake-llm:8399/v1/chat/completions#' \
         -e 's#https://api.resend.com/emails#http://fake-llm:8399/emails#' \
-        -e '/"name": "daily_mail_limit"/{n;s/"value": 20,/"value": 100000,/}' \
+        -e '/"name": "daily_mail_limit"/{n;s/"value": 40,/"value": 100000,/}' \
+        -e 's/"minutesInterval": 1$/"minutesInterval": 15/' \
         "$file" > /tmp/ajanlat-wf-test.json
     # Biztosíték: ha a fájl formája megváltozott, és valamelyik csere nem történt meg, ne töltsük be.
     if grep -q -e 'opencode.ai' -e 'api.resend.com' /tmp/ajanlat-wf-test.json; then

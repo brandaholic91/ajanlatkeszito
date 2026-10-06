@@ -1,7 +1,7 @@
 -- A második workflow (Jóváhagyás és küldés) adatbázis-oldala.
 
 -- Állapotváltás és naplózás egyben: a kérés új állapota lesz a lépés neve a lépésnaplóban is.
-CREATE FUNCTION set_status(p_request_id bigint, p_status text) RETURNS void
+CREATE OR REPLACE FUNCTION set_status(p_request_id bigint, p_status text) RETURNS void
 LANGUAGE sql AS $$
     UPDATE requests SET status = p_status WHERE id = p_request_id;
     SELECT log_event(p_request_id, p_status);
@@ -11,7 +11,7 @@ $$;
 -- 5. lépés: a néző rányomott a „Mehet” gombra.
 -- Kimenet: status = approved | not_found | not_approvable. Jóváhagyáskor benne van minden, ami a PDF-hez és a levélhez kell.
 -- A send_email hamis, ha aznap már elment a napi keret (visszaélés ellen): ilyenkor a PDF elkészül, de levél nem megy.
-CREATE FUNCTION approve_request(p_public_id uuid, p_daily_mail_limit integer DEFAULT 20) RETURNS jsonb
+CREATE OR REPLACE FUNCTION approve_request(p_public_id uuid, p_daily_mail_limit integer DEFAULT 40) RETURNS jsonb
 LANGUAGE plpgsql AS $$
 DECLARE
     v_request    requests%ROWTYPE;
@@ -52,7 +52,7 @@ $$;
 
 
 -- 6. lépés: a PDF bekerült az objektumtárolóba. Innentől a letöltés ezt a fájlt adja vissza, nem készül új.
-CREATE FUNCTION store_pdf_key(p_request_id bigint, p_key text) RETURNS void
+CREATE OR REPLACE FUNCTION store_pdf_key(p_request_id bigint, p_key text) RETURNS void
 LANGUAGE sql AS $$
     UPDATE requests SET pdf_key = p_key WHERE id = p_request_id;
     SELECT log_event(p_request_id, 'pdf_stored');
