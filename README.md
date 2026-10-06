@@ -62,7 +62,6 @@ A demóoldal utána a http://localhost:3000 címen érhető el.
 
 - [docs/mukodes.md](docs/mukodes.md): a három workflow lépésenként, a demóoldal végpontjai, a lépésnapló, az árazás szabályai, és hogy melyik fájl mit csinál.
 - [docs/fejlesztes.md](docs/fejlesztes.md): helyi futtatás, címek, az adatbázis-változások átvezetése, ismert buktatók.
-- [PRODUCT.md](PRODUCT.md) és [DESIGN.md](DESIGN.md): kinek szól a demó, és miért így néz ki.
 
 ## Licenc
 

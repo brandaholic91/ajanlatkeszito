@@ -84,7 +84,7 @@ Hibánál minden végpont ugyanilyen alakú választ ad: `{"error": "<kód>", "m
 | `web/components/` | A megjelenítés kis komponensekben; az állapot egy helyen van, a `Demo.tsx`-ben |
 | `web/.env.example` | A hét környezeti változó, helyi értékekkel |
 
-A kinézet a PDF-ajánlat arculatát követi (ugyanazok a színek és a betűtípus); a leírása a `DESIGN.md`-ben, a közönségé és a célé a `PRODUCT.md`-ben van.
+A kinézet a PDF-ajánlat arculatát követi (ugyanazok a színek és a betűtípus).
 
 ## A lépésnapló (`request_events`)
 
