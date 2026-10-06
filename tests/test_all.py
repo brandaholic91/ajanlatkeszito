@@ -10,6 +10,7 @@ import hashlib
 import io
 import json
 import uuid
+from pathlib import Path
 
 import boto3
 import httpx
@@ -233,9 +234,36 @@ def test_unknown_request_cannot_be_approved():
 
 
 def test_daily_mail_limit_turns_off_sending(db):
-    """Ha a napi keret elfogyott, a jóváhagyás megtörténik, de levél nem megy."""
+    """Ha a napi keret elfogyott, a jóváhagyás megtörténik, de levél nem megy.
+
+    A keretet a teszt maga adja meg a függvénynek, ezért az eredmény nem függ attól, hány levél ment el ma:
+    a keret éppen a mai darabszám -> betelt; eggyel több -> még belefér.
+    (A helyi workflow kerete 100000, lásd tests/setup_local.sh, így a többi teszt sosem éri el.)
+    """
     public_id = new_priced_request()
-    result = db.execute("SELECT approve_request(%s::uuid, 0)", (public_id,)).fetchone()[0]
-    db.rollback()  # csak a függvény válasza kell, a kérés maradjon jóváhagyatlan
-    assert result["status"] == "approved"
-    assert result["send_email"] is False
+    (sent_today,) = db.execute(
+        "SELECT count(*) FROM request_events WHERE step = 'sent' AND at >= date_trunc('day', now())"
+    ).fetchone()
+
+    for limit, expected in [(0, False), (sent_today, False), (sent_today + 1, True)]:
+        result = db.execute("SELECT approve_request(%s::uuid, %s)", (public_id, limit)).fetchone()[0]
+        db.rollback()  # csak a függvény válasza kell, a kérés maradjon jóváhagyatlan
+        assert result["status"] == "approved"
+        assert result["send_email"] is expected, f"keret: {limit}, ma elment: {sent_today}"
+
+
+def test_default_daily_mail_limit_is_20(db):
+    """A nyilvános demó kerete 20: ez az adatbázis-függvény alapértéke és a repóban lévő workflow beállítása is."""
+    (arguments,) = db.execute(
+        "SELECT pg_get_function_arguments(oid) FROM pg_proc WHERE proname = 'approve_request'"
+    ).fetchone()
+    assert "p_daily_mail_limit integer DEFAULT 20" in arguments
+
+    # a fájl helye ehhez a tesztfájlhoz képest, hogy ne számítson, melyik mappából indul a pytest
+    workflow = json.loads((Path(__file__).parent.parent / "n8n/02-jovahagyas-kuldes.json").read_text(encoding="utf-8"))
+    nodes = {node["name"]: node for node in workflow["nodes"]}
+    settings = {a["name"]: a["value"] for a in nodes["Beállítások"]["parameters"]["assignments"]["assignments"]}
+    assert settings["daily_mail_limit"] == 20
+    # a beállítás tényleg eljut a függvényig, második paraméterként
+    assert "$2::integer" in nodes["Jóváhagyás"]["parameters"]["query"]
+    assert "daily_mail_limit" in nodes["Jóváhagyás"]["parameters"]["options"]["queryReplacement"]

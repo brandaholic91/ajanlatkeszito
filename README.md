@@ -16,7 +16,7 @@ Szabad szöveges ajánlatkérésből márkázott PDF-ajánlat. A terv: `~/Obsidi
 | `n8n/02-jovahagyas-kuldes.json` | A második workflow (5–7. lépés): jóváhagyás, PDF, levél |
 | `pdf-service/main.py` | A PDF-készítő: FastAPI-végpont, amely a sablonból Playwrighttal PDF-et készít |
 | `pdf-service/templates/quote.html` | Az ajánlat kinézete (HTML és CSS, Jinja2 sablon) |
-| `tests/` | Ál-modell és ál-levélküldő, a helyi környezet beállítása, 21 teszt |
+| `tests/` | Ál-modell és ál-levélküldő, a helyi környezet beállítása, 22 teszt |
 | `samples/minta-ajanlat.pdf` | Egy kész mintaajánlat a terv példakéréséből |
 | `docker-compose.yml` | A helyi környezet: Postgres, PDF-készítő, n8n, objektumtároló (RustFS), és teszthez az ál-modell |
 
@@ -34,12 +34,12 @@ Szabad szöveges ajánlatkérésből márkázott PDF-ajánlat. A terv: `~/Obsidi
 ## A jóváhagyás és a küldés (`02-jovahagyas-kuldes.json`)
 
 1. **Webhook** (`POST /webhook/ajanlat-jovahagyas`, `{"public_id": ...}`): ezt hívja a demóoldal „Mehet” gombja.
-2. **Beállítások:** a PDF-készítő címe, a tároló bucketje, a levélküldő címe és a feladó. Élesítéskor a PDF-készítő címét itt kell átírni.
+2. **Beállítások:** a PDF-készítő címe, a tároló bucketje, a levélküldő címe, a feladó és a napi levélkeret (`daily_mail_limit`, 20). Élesítéskor a PDF-készítő címét itt kell átírni.
 3. **Jóváhagyás:** `SELECT approve_request(...)`. Csak `priced` állapotú kérést enged tovább; minden másra 409-es válasz megy (`not_found` vagy `not_approvable`). Dupla kattintásra így nem megy két levél.
 4. **PDF készítése:** a PDF-készítő megkapja a kérést és az ajánlato(ka)t, vissza egy PDF-fájl jön.
 5. **PDF szöveggé:** a fájl bájtjaiból base64 szöveg lesz, mert a Resend JSON-ban így várja a csatolmányt. A fájl maga is megmarad a következő lépésnek (`keepSource: both`).
 6. **PDF tárolása** és **PDF tárolva:** a fájl az objektumtároló `ajanlat-demo` bucketjébe kerül az ajánlat sorszámával (`AJ-2026-0001.pdf`), a helye pedig a `requests.pdf_key` oszlopba.
-7. **Levél küldhető?** Ha aznap már elment 20 levél, a levél kimarad (`email_skipped` a naplóban), a PDF az oldalról ettől még letölthető. A keret az `approve_request` második paramétere.
+7. **Levél küldhető?** Ha aznap már elment 20 levél, a levél kimarad (`email_skipped` a naplóban), a PDF az oldalról ettől még letölthető. A keret a Beállítások `daily_mail_limit` értéke; a workflow ezt adja át az `approve_request` második paramétereként. (Ha a függvényt paraméter nélkül hívod, az alapérték ott is 20.)
 8. **Levél küldése:** `POST https://api.resend.com/emails`, a `Resend kulcs` hitelesítő adattal. Utána a kérés állapota `sent`.
 
 **Miért tároljuk a PDF-et:** egy kiküldött ajánlat utólag nem változhat. Ha a letöltéskor újra készülne, egy sablon- vagy cégadat-módosítás után már nem az a fájl jönne le, ami levélben kiment. A demóoldal ezért a tárolt fájlt adja vissza. Teszt igazolja, hogy a tárolt és a kiküldött fájl bájtra azonos.
@@ -86,13 +86,14 @@ Ha az `db/*.sql` változik, a Postgres magától nem veszi át, mert csak üres 
 
 ## Amit tudni kell
 
-- **A `tests/setup_local.sh` a hitelesítő adatokat csak akkor tölti be, ha még nincsenek meg**, így a kézzel beírt valódi kulcsokat nem írja felül. A workflow-kat viszont mindig az ál-modellre és az ál-levélküldőre állítja; a valódira a `n8n/*.json` fájlok változatlan importálása állít vissza.
+- **A `tests/setup_local.sh` a hitelesítő adatokat csak akkor tölti be, ha még nincsenek meg**, így a kézzel beírt valódi kulcsokat nem írja felül. A workflow-kat viszont mindig az ál-modellre és az ál-levélküldőre állítja, a napi levélkeretet pedig 100000-re; a valódi címekre és a 20-as keretre a `n8n/*.json` fájlok változatlan importálása állít vissza. Ha a tesztmásolatban valódi külső cím maradna, a szkript megáll, és nem tölti be.
 
 - **Az opencode Go két dolgot kér:** `Authorization: Bearer <kulcs>` fejlécet és `x-opencode-session` fejlécet (enélkül 400-at ad). Az utóbbit a modellhívás csomópontja küldi, kérésenként `ajanlat-<kérésazonosító>` értékkel.
 - **Importálás és újraindítás után az n8n még egy ideig a workflow előző közzétett változatát futtatja.** Tíz másodperccel az indulás után még a régi futott, 45 másodperc után már az új. Az okát nem derítettem ki; a `setup_local.sh` ezért 45 másodpercet vár. Ha egy friss importálás után a régi viselkedést látod, várj fél percet, mielőtt hibát keresel.
 
 - **Mérés (2026-10-06, `deepseek-v4.1-flash`, thinking nélkül): 19 / 20.** A kérések: `tests/eval_requests.json`, a futtató: `tests/run_eval.py`, a részletes eredmény: `tests/eval_results.json`. Egy futás, a promptot nem hangoltam a tesztkérésekre. Az egyetlen hiba a 16-os (ékezet nélküli, szleng: „10 telo kene elofizetessel egyutt”): a modell a telefonokat kihagyta, és hiányos ajánlat készült.
 - A `pytest` tesztek ál-modellel (`tests/fake_llm.py`) futnak: a bekötést és az árazást igazolják, a promptot nem.
+- **A helyi workflow napi levélkerete 100000, a repóban lévő fájlé 20.** Minden tesztfutás négy levelet „küld” az ál-levélküldőnek, ezért a 20-as kerettel a tesztek a nap ötödik futása körül elbuktak (`email_skipped`). A `setup_local.sh` most betöltéskor átírja a keretet, ugyanúgy, ahogy a két külső címet. Magát a szabályt két teszt védi, és egyik sem függ attól, hány levél ment el aznap: a `test_daily_mail_limit_turns_off_sending` a keretet maga adja meg az `approve_request`-nek, a `test_default_daily_mail_limit_is_20` pedig azt nézi, hogy a függvény alapértéke és a repóban lévő workflow beállítása is 20.
 - **A cégnév munkanév** („Kéktorony Telekom Zrt."), nincs ellenőrizve, hogy létezik-e ilyen cég. Egy helyen cserélhető: `pdf-service/main.py`, `COMPANY`.
 - **A `tests/dev-credentials.json` jelszava csak a helyi adatbázisé**, valódi kulcs nincs a repóban.
 - A workflow-k hitelesítő adatai név szerint: `Ajánlat DB` (Postgres), `LLM kulcs` és `Resend kulcs` (mindkettő Header Auth: `Authorization` = `Bearer <kulcs>`), `PDF tároló` (S3: végpont, kulcspár, `forcePathStyle` bekapcsolva).

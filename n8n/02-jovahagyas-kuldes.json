@@ -54,12 +54,18 @@
               "name": "pdf_bucket",
               "value": "ajanlat-demo",
               "type": "string"
+            },
+            {
+              "id": "9b1f6d2e-5c47-4e0a-8f33-2a7d0c9e4b16",
+              "name": "daily_mail_limit",
+              "value": 20,
+              "type": "number"
             }
           ]
         },
         "options": {}
       },
-      "notes": "A PDF-készítő címe, a tároló bucketje, a levélküldő címe és a feladó itt cserélhető, egy helyen."
+      "notes": "A PDF-készítő címe, a tároló bucketje, a levélküldő címe, a feladó és a napi levélkeret itt cserélhető, egy helyen."
     },
     {
       "id": "49ac23d0-e16f-4f5d-8b17-56ce28f6311e",
@@ -72,9 +78,9 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT approve_request($1::uuid) AS result;",
+        "query": "SELECT approve_request($1::uuid, $2::integer) AS result;",
         "options": {
-          "queryReplacement": "={{ [ $('Webhook').item.json.body.public_id ] }}"
+          "queryReplacement": "={{ [ $('Webhook').item.json.body.public_id, $('Beállítások').item.json.daily_mail_limit ] }}"
         }
       },
       "credentials": {
