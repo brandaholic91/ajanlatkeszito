@@ -13,7 +13,7 @@ type StepListProps = {
 };
 
 // Ezek a lépések nem a szokásos úton érnek véget, ezért pipa helyett figyelmeztető jelet kapnak.
-const NOTICE_STEPS = ["needs_clarification", "email_skipped"];
+const NOTICE_STEPS = ["needs_clarification", "email_skipped", "failed", "reminder_failed"];
 
 // Egy sor elrendezése: jel | szöveg | idő. Mindhárom sorfajta ezt használja, ezért egy helyen van.
 const ROW = "grid grid-cols-[1.25rem_minmax(0,1fr)_auto] items-start gap-3 border-b border-line py-2.5";

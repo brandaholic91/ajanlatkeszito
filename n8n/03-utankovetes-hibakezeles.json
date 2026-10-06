@@ -1,0 +1,446 @@
+{
+  "id": "ajanlatUtankovetes",
+  "name": "Ajánlat 3 – Utánkövetés és hibakezelés",
+  "nodes": [
+    {
+      "id": "94848169-80df-478c-b4dc-80ad4d9df6a5",
+      "name": "Időzítő",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "notes": "Negyedóránként fut: lezárja a beragadt kéréseket, és kiküldi az esedékes emlékeztetőket."
+    },
+    {
+      "id": "8703fd53-9315-4e8f-bf3d-db23ef4c878b",
+      "name": "Kézi indítás",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ajanlat-utankovetes",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "webhookId": "ajanlat-utankovetes",
+      "notes": "Ugyanaz, mint az időzítő, csak azonnal: a tesztek és a bemutató ezzel indítják. Az n8n csak a belső hálózatról érhető el."
+    },
+    {
+      "id": "dfa4151c-52fe-4502-82f4-b690bbf834f8",
+      "name": "Beállítások",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        100
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a42dd89b-6c53-4c08-9bb3-af6696f3a597",
+              "name": "mail_url",
+              "value": "https://api.resend.com/emails",
+              "type": "string"
+            },
+            {
+              "id": "a0e93ad4-e5d7-4d3c-8850-0fe0f966ad26",
+              "name": "mail_from",
+              "value": "Kéktorony Telekom – demó <ajanlat@growthframe.hu>",
+              "type": "string"
+            },
+            {
+              "id": "24c19508-4d50-4107-a72c-01e9192970d8",
+              "name": "daily_mail_limit",
+              "value": 20,
+              "type": "number"
+            },
+            {
+              "id": "9f3e9c9e-4fdd-468e-9ed9-542f66b04f09",
+              "name": "followup_after_hours",
+              "value": 72,
+              "type": "number"
+            },
+            {
+              "id": "e49fe98c-6130-46ee-81e7-a8359b0c2c2b",
+              "name": "stuck_after_minutes",
+              "value": 10,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "notes": "A levélküldő címe, a feladó, a napi levélkeret (közös az ajánlatokkal), az emlékeztető késleltetése és a beragadás határideje itt cserélhető, egy helyen."
+    },
+    {
+      "id": "a6739fe9-cf8c-4a8f-844c-b96e0a6c5555",
+      "name": "Beragadt kérések lezárása",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT fail_stuck_requests($1::integer) AS result;",
+        "options": {
+          "queryReplacement": "={{ [ $('Beállítások').item.json.stuck_after_minutes ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "ajanlatDbCred0001",
+          "name": "Ajánlat DB"
+        }
+      }
+    },
+    {
+      "id": "a593dcc3-c5ca-41a2-ada9-f5f59ab7bf55",
+      "name": "Van beragadt?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "6c167294-03d1-4409-82df-70c25f04b592",
+              "leftValue": "={{ $json.result.count }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cda18ea9-ab37-4415-b986-923f2af15d60",
+      "name": "Riasztás: beragadt kérés",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "authentication": "webhook",
+        "operation": "sendLegacy",
+        "content": "={{ '🟠 Ajánlatkészítő: ' + $json.result.count + ' beragadt kérést lezártam (failed).\\n' + $json.result.stuck.map(s => '• kérés #' + s.request_id + ', itt állt meg: ' + s.stuck_at).join('\\n').slice(0, 1500) }}",
+        "options": {}
+      },
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "ajanlatDiscordCr01",
+          "name": "Riasztás (Discord)"
+        }
+      }
+    },
+    {
+      "id": "e467d91d-34a0-4061-b590-08b380cbabe7",
+      "name": "Esedékes emlékeztetők",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        440,
+        200
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT claim_due_reminders($1::integer, $2::integer) AS result;",
+        "options": {
+          "queryReplacement": "={{ [ $('Beállítások').item.json.followup_after_hours, $('Beállítások').item.json.daily_mail_limit ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "ajanlatDbCred0001",
+          "name": "Ajánlat DB"
+        }
+      }
+    },
+    {
+      "id": "5db09b2e-8ac9-4ad3-ba04-8303c6e299d4",
+      "name": "Levelenként egy elem",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        660,
+        200
+      ],
+      "parameters": {
+        "fieldToSplitOut": "result.reminders",
+        "options": {}
+      },
+      "notes": "A lista minden eleméből külön elem lesz. Ha a lista üres, itt megáll az ág."
+    },
+    {
+      "id": "49641b07-8c75-4065-a0c3-74c70e31e13a",
+      "name": "Emlékeztető küldése",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Beállítások').item.json.mail_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  from: $('Beállítások').item.json.mail_from,\n  to: [ $json.customer_email ],\n  subject: 'Emlékeztető: a(z) ' + $json.number + ' ajánlat ' + $json.valid_until + '-ig érvényes – Kéktorony Telekom (demó)',\n  html: '<p>Tisztelt Érdeklődő!</p><p>Néhány napja küldtük el a(z) <b>' + $json.number + '</b> sorszámú ajánlatunkat. Az ajánlat <b>' + $json.valid_until + '</b>-ig érvényes, ez még ' + $json.days_left + ' nap.</p><p>Ha kérdése van, vagy módosítana a tételeken, válaszoljon erre a levélre.</p><p>Üdvözlettel:<br>Kéktorony Telekom</p><hr><p style=\"color:#666;font-size:12px\">Ez egy demó. A Kéktorony Telekom kitalált cég, kitalált árakkal; ez nem valós ajánlat. A levelet azért kapta, mert ezt az e-mail-címet adták meg a demóoldalon. Több levelet ehhez az ajánlathoz nem küldünk.</p>'\n}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ajanlatResendCr01",
+          "name": "Resend kulcs"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput",
+      "notes": "Háromszor próbálja. Ha így sem megy, a workflow nem áll le: a hibás levél az alsó kimeneten megy tovább, a többi levél kimegy."
+    },
+    {
+      "id": "39539d4b-75c9-4b82-9d57-8a084c3ecaaf",
+      "name": "Sikertelen emlékeztető",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1100,
+        300
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT log_event($1::bigint, 'reminder_failed');",
+        "options": {
+          "queryReplacement": "={{ [ $('Levelenként egy elem').item.json.request_id ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "ajanlatDbCred0001",
+          "name": "Ajánlat DB"
+        }
+      }
+    },
+    {
+      "id": "46f20238-29b5-45b7-9da4-fb6217b99c43",
+      "name": "Riasztás: levélhiba",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        300
+      ],
+      "parameters": {
+        "authentication": "webhook",
+        "operation": "sendLegacy",
+        "content": "={{ '🟠 Ajánlatkészítő: nem ment el az emlékeztető a(z) ' + $('Levelenként egy elem').item.json.number + ' ajánlathoz (kérés #' + $('Levelenként egy elem').item.json.request_id + '). Újra nem próbálom.' }}",
+        "options": {}
+      },
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "ajanlatDiscordCr01",
+          "name": "Riasztás (Discord)"
+        }
+      }
+    },
+    {
+      "id": "7fb399f3-3305-4465-a23f-c8cf600a12cf",
+      "name": "Hiba egy workflow-ban",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        500
+      ],
+      "parameters": {},
+      "notes": "Akkor indul, ha az Ajánlat 1, 2 vagy 3 workflow egy futása hibával áll le (azok beállításában ez a workflow a hibakezelő)."
+    },
+    {
+      "id": "4ba82bb2-dd6c-42e1-aba0-e6a41d592b2c",
+      "name": "Riasztás: workflow-hiba",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 2,
+      "position": [
+        220,
+        500
+      ],
+      "parameters": {
+        "authentication": "webhook",
+        "operation": "sendLegacy",
+        "content": "={{ '🔴 Ajánlatkészítő: hibával állt le a(z) „' + ($json.workflow?.name ?? '?') + '” workflow.\\nCsomópont: ' + ($json.execution?.lastNodeExecuted ?? '?') + '\\nHiba: ' + String($json.execution?.error?.message ?? $json.trigger?.error?.message ?? '?').slice(0, 500) + '\\n' + ($json.execution?.url ?? '') }}",
+        "options": {}
+      },
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "ajanlatDiscordCr01",
+          "name": "Riasztás (Discord)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Időzítő": {
+      "main": [
+        [
+          {
+            "node": "Beállítások",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kézi indítás": {
+      "main": [
+        [
+          {
+            "node": "Beállítások",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Beállítások": {
+      "main": [
+        [
+          {
+            "node": "Beragadt kérések lezárása",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Esedékes emlékeztetők",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Beragadt kérések lezárása": {
+      "main": [
+        [
+          {
+            "node": "Van beragadt?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Van beragadt?": {
+      "main": [
+        [
+          {
+            "node": "Riasztás: beragadt kérés",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Esedékes emlékeztetők": {
+      "main": [
+        [
+          {
+            "node": "Levelenként egy elem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Levelenként egy elem": {
+      "main": [
+        [
+          {
+            "node": "Emlékeztető küldése",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Emlékeztető küldése": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Sikertelen emlékeztető",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sikertelen emlékeztető": {
+      "main": [
+        [
+          {
+            "node": "Riasztás: levélhiba",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hiba egy workflow-ban": {
+      "main": [
+        [
+          {
+            "node": "Riasztás: workflow-hiba",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "errorWorkflow": "ajanlatUtankovetes"
+  },
+  "active": false,
+  "pinData": {}
+}

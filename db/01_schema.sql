@@ -37,7 +37,8 @@ CREATE TABLE requests (
 );
 
 -- Lépésnapló: egy sor = egy elkészült lépés. Ebből rajzolja ki a demóoldal a folyamatot és az órát.
--- Lépések: received | extracted | checked | priced | needs_clarification (a 2. naptól: approved, pdf_ready, sent ...)
+-- Lépések: received | extracted | checked | priced | needs_clarification | approved | pdf_stored | sent | email_skipped
+-- A harmadik workflow lépései: failed (beragadt kérés lezárva) | reminded | reminder_failed
 CREATE TABLE request_events (
     id         bigserial PRIMARY KEY,
     request_id bigint NOT NULL REFERENCES requests (id),

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Helyi tesztkörnyezet: elindít mindent, és betölti a workflow-kat úgy, hogy az ál-modellt és az ál-levélküldőt hívják,
-# a napi levélkeret pedig ne fogyjon el a tesztektől.
+# a napi levélkeret pedig ne fogyjon el a tesztektől. A riasztások az ál-riasztócsatornára mennek.
 # Futtatás a projekt gyökeréből:  bash tests/setup_local.sh
 set -euo pipefail   # bármelyik parancs hibájánál álljon meg
 
@@ -17,6 +17,14 @@ elif grep -q "No credentials found" <<< "$creds"; then
 else
     echo "Nem tudtam megállapítani, vannak-e már hitelesítő adatok az n8n-ben. Megállok, hogy semmit ne írjak felül." >&2
     exit 1
+fi
+# A riasztás hitelesítő adata később került a projektbe, ezért külön fájlban van: így egy régebbi helyi n8n-be
+# egyedül is betölthető, a többi (esetleg valódi kulcsot tartalmazó) adat érintése nélkül.
+# Helyben az ál-riasztócsatornára mutat; valódi Discord webhook címet az n8n felületén lehet beírni a helyére.
+if grep -q ajanlatDiscordCr01 <<< "$creds"; then
+    echo "A riasztás hitelesítő adata már megvan, nem nyúlok hozzá."
+else
+    docker compose exec -T n8n n8n import:credentials --input=/tests/dev-credentials-alert.json
 fi
 unset creds
 
@@ -45,6 +53,7 @@ for file in n8n/*.json; do
 done
 docker compose exec -T n8n n8n publish:workflow --id=ajanlatFeldolgozas
 docker compose exec -T n8n n8n publish:workflow --id=ajanlatJovahagyas
+docker compose exec -T n8n n8n publish:workflow --id=ajanlatUtankovetes
 
 # A közzététel csak újraindítás után él.
 docker compose restart n8n

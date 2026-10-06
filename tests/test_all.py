@@ -4,7 +4,8 @@ Három dolgot ellenőriznek:
   1. az árazás kézzel kiszámolt példákra a várt összeget adja,
   2. az ellenőrzés megfogja a hibás bemenetet,
   3. a teljes lánc működik: webhook -> (ál-)modell -> árazás -> PDF,
-  4. a demóoldal négy végpontja (web/) ugyanezt a láncot végigviszi, és a hibás bemenetet elutasítja.
+  4. a demóoldal négy végpontja (web/) ugyanezt a láncot végigviszi, és a hibás bemenetet elutasítja,
+  5. az utánkövetés lezárja a beragadt kérést, egyszer emlékeztet, és a hibákról riasztást küld.
 """
 
 import hashlib
@@ -23,9 +24,12 @@ from pypdf import PdfReader
 DB = "postgresql://ajanlat:ajanlat-dev@127.0.0.1:5544/ajanlat"
 WEBHOOK = "http://127.0.0.1:5679/webhook/ajanlatkeres"
 APPROVE = "http://127.0.0.1:5679/webhook/ajanlat-jovahagyas"
+FOLLOWUP = "http://127.0.0.1:5679/webhook/ajanlat-utankovetes"  # az Utánkövetés workflow kézi indítása
 PDF = "http://127.0.0.1:8300/render"
 WEB = "http://127.0.0.1:3000/api/requests"  # a demóoldal szerveroldala; a böngésző csak ezt látja
 FAKE_MAIL = "http://127.0.0.1:8399/emails"  # az ál-levélküldő; megmondja, mit kapott csatolmányként
+FAKE_SUBJECTS = "http://127.0.0.1:8399/subjects"  # címzettenként a kapott levelek tárgya
+FAKE_ALERTS = "http://127.0.0.1:8399/discord"  # az ál-riasztócsatorna; megmondja, milyen riasztások jöttek
 S3 = boto3.client(  # a helyi objektumtároló (RustFS), a docker-compose.yml-ben megadott helyi kulccsal
     "s3",
     endpoint_url="http://127.0.0.1:9100",
@@ -179,12 +183,10 @@ def test_event_log_follows_the_request(db):
 # --- 4. Jóváhagyás és küldés ---
 
 
-def new_priced_request():
+def new_priced_request(email="vevo@example.com"):
     """Beküld egy árazható kérést, és visszaadja a nyilvános azonosítóját."""
     public_id = str(uuid.uuid4())
-    result = httpx.post(
-        WEBHOOK, json={"email": "vevo@example.com", "text": EXAMPLE_TEXT, "public_id": public_id}, timeout=30
-    ).json()
+    result = httpx.post(WEBHOOK, json={"email": email, "text": EXAMPLE_TEXT, "public_id": public_id}, timeout=30).json()
     assert result["status"] == "priced"
     return public_id
 
@@ -244,8 +246,9 @@ def test_daily_mail_limit_turns_off_sending(db):
     (A helyi workflow kerete 100000, lásd tests/setup_local.sh, így a többi teszt sosem éri el.)
     """
     public_id = new_priced_request()
+    # az emlékeztető is levél, ugyanabból a keretből megy
     (sent_today,) = db.execute(
-        "SELECT count(*) FROM request_events WHERE step = 'sent' AND at >= date_trunc('day', now())"
+        "SELECT count(*) FROM request_events WHERE step IN ('sent', 'reminded') AND at >= date_trunc('day', now())"
     ).fetchone()
 
     for limit, expected in [(0, False), (sent_today, False), (sent_today + 1, True)]:
@@ -272,7 +275,166 @@ def test_default_daily_mail_limit_is_20(db):
     assert "daily_mail_limit" in nodes["Jóváhagyás"]["parameters"]["options"]["queryReplacement"]
 
 
-# --- 5. A demóoldal végpontjai (web/) ---
+# --- 5. Utánkövetés és hibakezelés ---
+
+
+def wait_for(question, timeout=30):
+    """Fél másodpercenként újra megkérdezi, amíg a `question()` igazat nem ad. A workflow a háttérben fut, ezért kell várni."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        answer = question()
+        if answer:
+            return answer
+        time.sleep(0.5)
+    raise AssertionError(f"{timeout} mp alatt nem történt meg, amire a teszt várt")
+
+
+def alerts():
+    return httpx.get(FAKE_ALERTS).json()["alerts"]
+
+
+def subjects_for(email):
+    return httpx.get(f"{FAKE_SUBJECTS}/{email}").json()["subjects"]
+
+
+def request_row(db, public_id):
+    """A kérés belső sorszáma és állapota. A commit azért kell, hogy a kapcsolat a workflow friss írásait is lássa."""
+    db.commit()
+    return db.execute("SELECT id, status FROM requests WHERE public_id = %s", (public_id,)).fetchone()
+
+
+def make_older(db, public_id, interval, step=None):
+    """Visszadátumozza a kérés naplóját, mintha régebben történt volna (egy lépést, vagy ha nincs megadva, mindet)."""
+    db.execute(
+        "UPDATE request_events e SET at = e.at - %s::interval FROM requests r"
+        " WHERE r.id = e.request_id AND r.public_id = %s AND (%s::text IS NULL OR e.step = %s)",
+        (interval, public_id, step, step),
+    )
+    db.commit()
+
+
+def new_sent_request(db, email, sent_ago):
+    """Végigvisz egy kérést a kiküldésig, majd visszadátumozza a kiküldést."""
+    public_id = new_priced_request(email)
+    assert httpx.post(APPROVE, json={"public_id": public_id}, timeout=30).json()["status"] == "sent"
+    make_older(db, public_id, sent_ago, step="sent")
+    return public_id
+
+
+def test_failed_workflow_sends_alert_and_request_gets_closed(db):
+    """Ha a modell nem válaszol, a workflow hibával áll le: erről riasztás megy, a beragadt kérést pedig az utánkövetés lezárja."""
+    public_id = str(uuid.uuid4())
+    alerts_before = len(alerts())
+    response = httpx.post(
+        WEBHOOK, json={"email": "vevo@example.com", "text": "hibateszt: 5 mobil", "public_id": public_id}, timeout=60
+    )
+    assert response.status_code == 500
+    wait_for(lambda: any("Ajánlat 1" in alert and "Modell" in alert for alert in alerts()[alerts_before:]))
+
+    request_id, status = request_row(db, public_id)
+    assert status == "received"  # a kérés félúton maradt, magától senki nem jelöli hibásnak
+
+    # friss kérést az utánkövetés még nem zár le (lehet, hogy éppen fut)
+    db.execute("SELECT fail_stuck_requests(10)")
+    assert request_row(db, public_id)[1] == "received"
+
+    make_older(db, public_id, "1 hour")
+    assert httpx.post(FOLLOWUP, json={}).status_code == 200
+    wait_for(lambda: request_row(db, public_id)[1] == "failed")
+    assert steps_of(db, public_id) == ["received", "failed"]
+    wait_for(lambda: any(f"kérés #{request_id}," in alert for alert in alerts()[alerts_before:]))
+
+
+def test_stuck_check_leaves_waiting_and_finished_requests_alone(db):
+    """Csak a félúton maradt kérés beragadt. Aki a nézőre vár (priced), vagy végzett (sent), ahhoz nem nyúl, akármilyen régi."""
+    waiting = new_priced_request()
+    finished = new_sent_request(db, "vevo@example.com", "0 hours")
+    make_older(db, waiting, "2 days")
+    make_older(db, finished, "2 days")
+
+    db.execute("SELECT fail_stuck_requests(10)")
+    db.commit()
+    assert request_row(db, waiting)[1] == "priced"
+    assert request_row(db, finished)[1] == "sent"
+
+
+def test_reminder_goes_out_once(db):
+    """A három napnál régebben kiküldött ajánlat egy emlékeztetőt kap; a következő futás már nem küld újat."""
+    email = f"emlekezteto-{uuid.uuid4().hex[:8]}@example.com"
+    public_id = new_sent_request(db, email, "4 days")
+    assert len(subjects_for(email)) == 1  # eddig csak az ajánlat levele ment el
+
+    assert httpx.post(FOLLOWUP, json={}).status_code == 200
+    wait_for(lambda: len(subjects_for(email)) == 2)
+    assert subjects_for(email)[1].startswith("Emlékeztető: ")
+    assert steps_of(db, public_id)[-1] == "reminded"
+    assert request_row(db, public_id)[1] == "sent"  # az emlékeztető nem állapot, csak egy lépés a naplóban
+
+    assert httpx.post(FOLLOWUP, json={}).status_code == 200
+    time.sleep(3)
+    assert len(subjects_for(email)) == 2
+
+
+def test_fresh_quote_gets_no_reminder(db):
+    """A három napnál frissebb ajánlat még nem esedékes."""
+    email = f"friss-{uuid.uuid4().hex[:8]}@example.com"
+    public_id = new_sent_request(db, email, "2 days")
+    assert httpx.post(FOLLOWUP, json={}).status_code == 200
+    time.sleep(3)
+    assert len(subjects_for(email)) == 1
+    assert "reminded" not in steps_of(db, public_id)
+
+
+def test_expired_quote_and_full_mail_limit_get_no_reminder(db):
+    """Lejárt ajánlatra nem megy emlékeztető, és akkor sem, ha a napi levélkeret betelt."""
+    email = f"lejart-{uuid.uuid4().hex[:8]}@example.com"
+    expired = new_sent_request(db, email, "20 days")
+    db.execute(
+        "UPDATE quotes SET valid_until = current_date - 1 WHERE request_id = (SELECT id FROM requests WHERE public_id = %s)",
+        (expired,),
+    )
+    db.commit()
+    due = new_sent_request(db, email, "4 days")
+
+    assert db.execute("SELECT claim_due_reminders(72, 0)").fetchone()[0]["count"] == 0  # a keret betelt
+    db.rollback()
+
+    reminders = db.execute("SELECT claim_due_reminders(72, 100000)").fetchone()[0]["reminders"]
+    db.rollback()  # csak a függvény válasza kell, levél ne menjen
+    request_ids = [reminder["request_id"] for reminder in reminders]
+    assert request_row(db, due)[0] in request_ids
+    assert request_row(db, expired)[0] not in request_ids
+
+
+def test_failed_reminder_is_logged_and_alerted_not_retried(db):
+    """Ha az emlékeztetőt a levélküldő háromszor sem fogadja el: a naplóba hiba kerül, riasztás megy, és nem próbálja újra."""
+    email = f"vevo-{uuid.uuid4().hex[:8]}@example.com"
+    public_id = new_sent_request(db, email, "4 days")
+    # a címet csak most írjuk át olyanra, amit az ál-levélküldő visszadob: az ajánlat levele még rendben elment
+    bouncing = email.replace("vevo-", "visszapattan-")
+    db.execute("UPDATE requests SET email = %s WHERE public_id = %s", (bouncing, public_id))
+    db.commit()
+    alerts_before = len(alerts())
+
+    assert httpx.post(FOLLOWUP, json={}).status_code == 200
+    wait_for(lambda: steps_of(db, public_id)[-1] == "reminder_failed")
+    assert steps_of(db, public_id)[-2:] == ["reminded", "reminder_failed"]
+    wait_for(lambda: any("nem ment el az emlékeztető" in alert for alert in alerts()[alerts_before:]))
+
+    assert httpx.post(FOLLOWUP, json={}).status_code == 200
+    time.sleep(3)
+    assert steps_of(db, public_id).count("reminded") == 1
+    assert subjects_for(bouncing) == []
+
+
+def test_all_workflows_report_errors_to_the_followup_workflow():
+    """A repóban lévő mindhárom workflow hibakezelője az Utánkövetés workflow."""
+    for path in sorted((Path(__file__).parent.parent / "n8n").glob("*.json")):
+        workflow = json.loads(path.read_text(encoding="utf-8"))
+        assert workflow["settings"]["errorWorkflow"] == "ajanlatUtankovetes", path.name
+
+
+# --- 6. A demóoldal végpontjai (web/) ---
 
 
 def web_create(text, public_id=None, email="vevo@example.com"):

@@ -28,7 +28,7 @@ BEGIN
 
     SELECT count(*) INTO v_sent_today
     FROM request_events
-    WHERE step = 'sent' AND at >= date_trunc('day', now());
+    WHERE step IN ('sent', 'reminded') AND at >= date_trunc('day', now()); -- az emlékeztető is levél, ugyanabból a keretből megy
 
     PERFORM set_status(v_request.id, 'approved');
 

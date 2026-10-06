@@ -14,6 +14,10 @@ export const STEP_LABELS: Record<string, string> = {
   pdf_stored: "A PDF elkészült és bekerült a tárolóba",
   sent: "Az e-mail elment",
   email_skipped: "Az e-mail kimaradt, mert betelt a napi levélkeret",
+  // A harmadik workflow (Utánkövetés és hibakezelés) lépései. Ezek percekkel vagy napokkal később kerülnek a naplóba.
+  failed: "A feldolgozás megszakadt, a kérést lezártuk",
+  reminded: "Emlékeztető ment az ajánlatról",
+  reminder_failed: "Az emlékeztetőt nem sikerült elküldeni",
 };
 
 // Ugyanezek a lépések, amíg még nem történtek meg: a lista előre kiírja őket, ezért nem állhatnak múlt időben.
@@ -40,7 +44,7 @@ export const NEXT_STEP_LABELS: Record<string, string> = {
 export const WAITING_FOR_FIRST_STEP = "A kérés úton van a feldolgozóhoz…";
 
 // Ezeknél a lépéseknél a folyamat megáll, és nem történik semmi, amíg a néző nem lép.
-const RESTING_STEPS = ["priced", "needs_clarification", "sent", "email_skipped"];
+const RESTING_STEPS = ["priced", "needs_clarification", "sent", "email_skipped", "failed", "reminded", "reminder_failed"];
 
 export function stepLabel(step: string): string {
   // Ismeretlen lépésnél (ha később új kerül a naplóba) a nyers név is jobb, mint a semmi.

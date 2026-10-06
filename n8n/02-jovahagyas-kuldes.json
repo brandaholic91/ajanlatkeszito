@@ -523,7 +523,8 @@
     }
   },
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "errorWorkflow": "ajanlatUtankovetes"
   },
   "active": false,
   "pinData": {}

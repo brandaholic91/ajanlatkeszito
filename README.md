@@ -2,7 +2,7 @@
 
 Szabad szöveges ajánlatkérésből márkázott PDF-ajánlat. A terv: `~/Obsidian/second-brain/2026-10-06 Ajánlatkészítő terv.md`.
 
-**Állapot (2026-10-06):** az 1. nap kész és helyben tesztelve: árlista, árazás, ellenőrzés, a Feldolgozás workflow, a PDF-készítő. Valódi modellel (opencode Go, `deepseek-v4.1-flash`) a terv példakérése egyszer futott le, helyesen; a többi teszt ál-modellel megy.
+**Állapot (2026-10-06):** helyben mindhárom workflow és a demóoldal kész és tesztelve; a homelabra még semmi nem került. Valódi modellel (opencode Go, `deepseek-v4.1-flash`) a 20 kérésből álló mérés és néhány kézi próba futott; a tesztek ál-modellel, ál-levélküldővel és ál-riasztócsatornával mennek. A harmadik workflow valódi Resenddel és valódi Discorddal még nem futott.
 
 ## Mi hol van
 
@@ -14,10 +14,12 @@ Szabad szöveges ajánlatkérésből márkázott PDF-ajánlat. A terv: `~/Obsidi
 | `db/04_approval.sql` | A jóváhagyás adatbázis-oldala: `approve_request` (jóváhagyás, napi levélkerettel), `set_status` (állapotváltás naplózással), `store_pdf_key` (a tárolt PDF helye) |
 | `n8n/01-feldolgozas.json` | Az első workflow (1–4. lépés), importálható az n8n-be |
 | `n8n/02-jovahagyas-kuldes.json` | A második workflow (5–7. lépés): jóváhagyás, PDF, levél |
+| `db/05_followup.sql` | Az utánkövetés adatbázis-oldala: `fail_stuck_requests` (beragadt kérések lezárása), `claim_due_reminders` (kinek jár emlékeztető) |
+| `n8n/03-utankovetes-hibakezeles.json` | A harmadik workflow (8. lépés): emlékeztető, beragadt kérések lezárása, riasztás Discordra |
 | `pdf-service/main.py` | A PDF-készítő: FastAPI-végpont, amely a sablonból Playwrighttal PDF-et készít |
 | `pdf-service/templates/quote.html` | Az ajánlat kinézete (HTML és CSS, Jinja2 sablon) |
 | `web/` | A demóoldal (Next.js): egy oldal és négy szerveroldali végpont. Részletek lent, „A demóoldal” alatt |
-| `tests/` | Ál-modell és ál-levélküldő, a helyi környezet beállítása, 31 teszt |
+| `tests/` | Ál-modell, ál-levélküldő és ál-riasztócsatorna (`fake_llm.py`), a helyi környezet beállítása, 38 teszt |
 | `samples/minta-ajanlat.pdf` | Egy kész mintaajánlat a terv példakéréséből |
 | `docker-compose.yml` | A helyi környezet: Postgres, PDF-készítő, n8n, objektumtároló (RustFS), a demóoldal, és teszthez az ál-modell |
 
@@ -45,6 +47,19 @@ Szabad szöveges ajánlatkérésből márkázott PDF-ajánlat. A terv: `~/Obsidi
 
 **Miért tároljuk a PDF-et:** egy kiküldött ajánlat utólag nem változhat. Ha a letöltéskor újra készülne, egy sablon- vagy cégadat-módosítás után már nem az a fájl jönne le, ami levélben kiment. A demóoldal ezért a tárolt fájlt adja vissza. Teszt igazolja, hogy a tárolt és a kiküldött fájl bájtra azonos.
 
+## Az utánkövetés és a hibakezelés (`03-utankovetes-hibakezeles.json`)
+
+Egy workflow, három ág. Az első kettőt az **Időzítő** indítja negyedóránként (vagy a **Kézi indítás**: `POST /webhook/ajanlat-utankovetes`, üres törzzsel), a harmadikat maga az n8n, ha egy futás hibával áll le.
+
+1. **Beragadt kérések.** Ha egy workflow félúton elhal, a kérés `received` vagy `approved` állapotban marad, és magától semmi nem jelöli hibásnak. A `fail_stuck_requests` lezárja (`failed`) azokat, amelyeknél az utolsó lépés óta több mint 10 perc telt el (`stuck_after_minutes`), és ha volt ilyen, egy összesítő riasztás megy. A nézőre váró (`priced`, `needs_clarification`) és a befejezett kérésekhez nem nyúl.
+2. **Emlékeztető.** A `claim_due_reminders` kiválasztja azokat a kéréseket, amelyeknek az ajánlata legalább 72 órája elment (`followup_after_hours`), még érvényes, és még nem kaptak emlékeztetőt. Mindegyik egy rövid levelet kap, csatolmány nélkül. **A demóban nincs válaszfigyelés, ezért minden kiküldött ajánlat kap egy emlékeztetőt**, nem csak az, amelyikre nem jött válasz.
+   - **Egy kérés legfeljebb egy emlékeztetőt kap.** A `reminded` lépés még a küldés előtt bekerül a naplóba. Fordított sorrendnél, ha a levél elmegy, de a naplózás elhasal, a következő futás újra elküldené, negyedóránként.
+   - **Újrapróbálás:** a küldés háromszor próbálkozik, két másodperc szünettel. Ha így sem megy, a workflow nem áll le: az a levél az alsó kimenetre kerül (`reminder_failed` a naplóban, riasztás), a többi kimegy. Később nem próbálja újra.
+   - **A napi levélkeret közös** az ajánlatokkal (`daily_mail_limit`, 20): az `approve_request` és a `claim_due_reminders` is a ma elment `sent` és `reminded` lépéseket együtt számolja. Ami nem fér bele, másnap megy.
+3. **Hibafigyelés.** Mindhárom workflow beállításában ez a workflow a hibakezelő (`settings.errorWorkflow`). Ha bármelyik futás hibával áll le, a **Hiba egy workflow-ban** csomópont megkapja a workflow nevét, az utolsó csomópontot és a hibaüzenetet, és ezt riasztásként továbbküldi. Maga a kérés ilyenkor félúton marad; azt az 1. ág zárja le legkésőbb 25 perc múlva.
+
+A riasztások a `Riasztás (Discord)` hitelesítő adatban megadott webhook címre mennek. Helyben ez az ál-riasztócsatorna (`http://fake-llm:8399/discord`).
+
 ## A demóoldal (`web/`)
 
 Egyetlen oldal: űrlap, élő lépéslista órával, az elkészült ajánlat, a „Mehet” gomb és a PDF letöltése. **A böngésző csak a Next.js alkalmazással beszél.** Az n8n, a Postgres és az objektumtároló a belső hálózaton marad, ezeket a szerveroldali végpontok (route handlerek) érik el. Így a webhookok címe és a tároló kulcsa sosem jut el a böngészőig.
@@ -52,7 +67,7 @@ Egyetlen oldal: űrlap, élő lépéslista órával, az elkészült ajánlat, a 
 Egy kérés útja a négy végponton:
 
 1. **`POST /api/requests`** (`{"public_id", "email", "text"}`): a böngésző generál egy UUID-t, és ezzel küldi be a kérést. A végpont ellenőrzi a bemenetet (UUID-alak, legfeljebb 2000 karakter, e-mail-alak), megnézi az adatbázisban a napi keretet (`DAILY_REQUEST_LIMIT`, alapból 50; ez a modell költségét védi), majd továbbadja a kérést a Feldolgozás webhooknak. Csak akkor válaszol, amikor a workflow végigfutott.
-2. **`GET /api/requests/<public_id>`**: az oldal ezt kérdezi le fél másodpercenként, már az 1. hívás közben is, hiszen az azonosítót ő maga adta. A végpont közvetlenül az adatbázisból olvas: állapot, lépésnapló időpontokkal, az ajánlat(ok) tételsorai és összesítői, a visszakérdezés oka, és hogy van-e már tárolt PDF. A belső sorszám nincs a válaszban. A figyelés megáll, amikor a napló utolsó lépése `priced`, `needs_clarification`, `sent` vagy `email_skipped`.
+2. **`GET /api/requests/<public_id>`**: az oldal ezt kérdezi le fél másodpercenként, már az 1. hívás közben is, hiszen az azonosítót ő maga adta. A végpont közvetlenül az adatbázisból olvas: állapot, lépésnapló időpontokkal, az ajánlat(ok) tételsorai és összesítői, a visszakérdezés oka, és hogy van-e már tárolt PDF. A belső sorszám nincs a válaszban. A figyelés megáll, amikor a napló utolsó lépése `priced`, `needs_clarification`, `sent`, `email_skipped`, vagy az utánkövetés valamelyik lépése (`failed`, `reminded`, `reminder_failed`).
 3. **`POST /api/requests/<public_id>/approve`**: a „Mehet” gomb. Továbbadja a jóváhagyást a Jóváhagyás és küldés webhooknak; annak a 409-es válaszát (már jóváhagyták, vagy nincs ilyen kérés) 409-ként adja tovább.
 4. **`GET /api/requests/<public_id>/pdf`**: kikeresi az adatbázisból a kéréshez tartozó `pdf_key`-t, és a tárolóból folyamként továbbadja a fájlt. A fájl nevét sosem a böngésző adja meg, így mások ajánlatát nem lehet kikérni.
 
@@ -73,6 +88,7 @@ Minden elkészült lépés egy sor: melyik kérés, melyik lépés, mikor. A dem
 
 - A Feldolgozás workflow lépései: `received` → `extracted` → `checked` → `priced` vagy `needs_clarification`.
 - A Jóváhagyás és küldés workflow lépései: `approved` → `pdf_stored` → `sent` vagy `email_skipped`.
+- Az Utánkövetés és hibakezelés workflow lépései, percekkel vagy napokkal később: `failed` (beragadt kérés lezárva), `reminded`, `reminder_failed`. Közülük csak a `failed` állapot is; az emlékeztető után a kérés állapota `sent` marad.
 - A `received` sort a workflow írja, a többit a `process_request` függvény. Az `extracted` időpontja az a pillanat, amikor a modell válasza megérkezett az adatbázishoz.
 - Új lépés naplózása bármelyik workflow-ból: `SELECT log_event(<kérésazonosító>, '<lépés>');`
 - A sorrend a kódban ellenőrzés, majd árazás (a terv táblázata fordítva számozza).
@@ -90,7 +106,7 @@ Minden elkészült lépés egy sor: melyik kérés, melyik lépés, mikor. A dem
 ## Helyi futtatás
 
 ```bash
-bash tests/setup_local.sh      # elindít mindent, betölti a workflow-t az ál-modellel
+bash tests/setup_local.sh      # elindít mindent, betölti a három workflow-t az ál-modellel
 uv run --with pytest --with httpx --with 'psycopg[binary]' --with pypdf --with boto3 pytest tests/ -v
 docker compose --profile test down     # leállítás (az adat megmarad; -v kapcsolóval törlődik is)
 ```
@@ -127,6 +143,9 @@ Ha az `db/*.sql` változik, a Postgres magától nem veszi át, mert csak üres 
 
 - **A `tests/setup_local.sh` a hitelesítő adatokat csak akkor tölti be, ha még nincsenek meg**, így a kézzel beírt valódi kulcsokat nem írja felül. A workflow-kat viszont mindig az ál-modellre és az ál-levélküldőre állítja, a napi levélkeretet pedig 100000-re; a valódi címekre és a 20-as keretre a `n8n/*.json` fájlok változatlan importálása állít vissza. Ha a tesztmásolatban valódi külső cím maradna, a szkript megáll, és nem tölti be.
 
+- **Ha a helyi workflow-k a valódi Resendre mutatnak, az Utánkövetés negyedóránként valódi emlékeztetőt küld** minden három napnál régebbi, `sent` állapotú helyi kérésre, a tesztek `@example.com` címeire is (naponta legfeljebb 20-at). A valódi címekre ezért csak annyi időre érdemes átállni, amíg a próba tart, vagy közben az Utánkövetés workflow-t ki kell kapcsolni az n8n felületén.
+- **A `Riasztás (Discord)` hitelesítő adat külön fájlból töltődik be** (`tests/dev-credentials-alert.json`), mert később került a projektbe: így egy már beállított helyi n8n-be egyedül is betölthető. Valódi riasztáshoz a Discord webhook címét az n8n felületén kell beírni a helyére.
+- **A tesztek az emlékeztetőt visszadátumozással próbálják ki** (a `sent` lépés időpontját írják át), nem várnak három napot. Mellékhatás: minden tesztfutás lezárja a helyi adatbázisban talált összes beragadt kérést, és „elküldi” az összes esedékes emlékeztetőt az ál-levélküldőnek.
 - **Az opencode Go két dolgot kér:** `Authorization: Bearer <kulcs>` fejlécet és `x-opencode-session` fejlécet (enélkül 400-at ad). Az utóbbit a modellhívás csomópontja küldi, kérésenként `ajanlat-<kérésazonosító>` értékkel.
 - **Importálás és újraindítás után az n8n még egy ideig a workflow előző közzétett változatát futtatja.** Tíz másodperccel az indulás után még a régi futott, 45 másodperc után már az új. Az okát nem derítettem ki; a `setup_local.sh` ezért 45 másodpercet vár. Ha egy friss importálás után a régi viselkedést látod, várj fél percet, mielőtt hibát keresel.
 
@@ -138,4 +157,4 @@ Ha az `db/*.sql` változik, a Postgres magától nem veszi át, mert csak üres 
 - A beküldés utáni első lekérdezés 404-et kaphat, mert az n8n még nem írta be a kérést. Ez várt, az oldal kezeli; a böngésző konzoljában ettől még látszik egy 404-es sor.
 - **A cégnév munkanév** („Kéktorony Telekom Zrt."), nincs ellenőrizve, hogy létezik-e ilyen cég. Egy helyen cserélhető: `pdf-service/main.py`, `COMPANY`.
 - **A `tests/dev-credentials.json` jelszava csak a helyi adatbázisé**, valódi kulcs nincs a repóban.
-- A workflow-k hitelesítő adatai név szerint: `Ajánlat DB` (Postgres), `LLM kulcs` és `Resend kulcs` (mindkettő Header Auth: `Authorization` = `Bearer <kulcs>`), `PDF tároló` (S3: végpont, kulcspár, `forcePathStyle` bekapcsolva).
+- A workflow-k hitelesítő adatai név szerint: `Ajánlat DB` (Postgres), `LLM kulcs` és `Resend kulcs` (mindkettő Header Auth: `Authorization` = `Bearer <kulcs>`), `PDF tároló` (S3: végpont, kulcspár, `forcePathStyle` bekapcsolva), `Riasztás (Discord)` (Discord Webhook: a webhook címe).
