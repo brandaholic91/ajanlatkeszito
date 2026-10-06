@@ -39,6 +39,26 @@ export default function Home() {
         <Demo />
         <Notes />
       </main>
+
+      {/* Lábléc: ki készítette. A linket továbbküldik, ezért az oldalon is rajta kell lennie. */}
+      <footer className="border-t border-line">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 px-4 py-6 text-sm text-muted sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
+          <p>
+            Készítette: <strong className="font-bold text-ink">Holik Balázs</strong>
+          </p>
+          <p>
+            {/* A rel="noopener noreferrer" miatt az új lapon megnyíló oldal nem fér hozzá ehhez a laphoz. */}
+            <a
+              className="button-text"
+              href="https://www.linkedin.com/in/holikbalazs/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              LinkedIn
+            </a>
+          </p>
+        </div>
+      </footer>
     </>
   );
 }
