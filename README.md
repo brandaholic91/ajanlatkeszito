@@ -1,8 +1,12 @@
 # Ajánlatkészítő
 
-Szabad szöveges ajánlatkérésből márkázott PDF-ajánlat. A terv: `~/Obsidian/second-brain/2026-10-06 Ajánlatkészítő terv.md`.
+Szabad szöveges ajánlatkérésből egy percen belül márkázott PDF-ajánlat. Portfólió-demó egy kitalált telekom-szolgáltató („Kéktorony Telekom”) árlistájával.
 
-**Állapot (2026-10-06):** helyben mindhárom workflow és a demóoldal kész és tesztelve; a homelabra még semmi nem került. Valódi modellel (opencode Go, `deepseek-v4.1-flash`) a 20 kérésből álló mérés és néhány kézi próba futott; a tesztek ál-modellel, ál-levélküldővel és ál-riasztócsatornával mennek. A harmadik workflow valódi Resenddel és valódi Discorddal még nem futott.
+A nyelvi modell csak a tételeket és a mennyiségeket olvassa ki a szövegből, árat sosem lát: az ár mindig adatbázis-lekérdezésből jön. Az ajánlat csak emberi jóváhagyás után megy ki.
+
+**Miből áll:** három [n8n](https://n8n.io) workflow (feldolgozás; jóváhagyás és küldés; utánkövetés és hibakezelés), PostgreSQL-függvények az árazáshoz, Python PDF-készítő (FastAPI, Playwright), S3-kompatibilis objektumtároló a kiküldött ajánlatoknak, Next.js demóoldal élő lépésnaplóval.
+
+**Állapot (2026-10-06):** mindhárom workflow és a demóoldal kész, 38 automata teszt fedi (ál-modellel, ál-levélküldővel és ál-riasztócsatornával). Valódi modellel (`deepseek-v4.1-flash`) egy 20 kérésből álló mérés futott, 19 helyes eredménnyel; a részletek lent, az „Amit tudni kell” alatt. A harmadik workflow valódi levélküldővel és valódi Discorddal még nem futott.
 
 ## Mi hol van
 
@@ -21,6 +25,7 @@ Szabad szöveges ajánlatkérésből márkázott PDF-ajánlat. A terv: `~/Obsidi
 | `web/` | A demóoldal (Next.js): egy oldal és négy szerveroldali végpont. Részletek lent, „A demóoldal” alatt |
 | `tests/` | Ál-modell, ál-levélküldő és ál-riasztócsatorna (`fake_llm.py`), a helyi környezet beállítása, 38 teszt |
 | `samples/minta-ajanlat.pdf` | Egy kész mintaajánlat a terv példakéréséből |
+| `docker-compose.prod.yml` | Az éles környezet: adatbázis, PDF-készítő és demóoldal; az n8n és az objektumtároló külön gépen fut, a címeket és a jelszavakat környezeti változók adják |
 | `docker-compose.yml` | A helyi környezet: Postgres, PDF-készítő, n8n, objektumtároló (RustFS), a demóoldal, és teszthez az ál-modell |
 
 ## Hogyan megy végig egy kérés
@@ -158,3 +163,7 @@ Ha az `db/*.sql` változik, a Postgres magától nem veszi át, mert csak üres 
 - **A cégnév munkanév** („Kéktorony Telekom Zrt."), nincs ellenőrizve, hogy létezik-e ilyen cég. Egy helyen cserélhető: `pdf-service/main.py`, `COMPANY`.
 - **A `tests/dev-credentials.json` jelszava csak a helyi adatbázisé**, valódi kulcs nincs a repóban.
 - A workflow-k hitelesítő adatai név szerint: `Ajánlat DB` (Postgres), `LLM kulcs` és `Resend kulcs` (mindkettő Header Auth: `Authorization` = `Bearer <kulcs>`), `PDF tároló` (S3: végpont, kulcspár, `forcePathStyle` bekapcsolva), `Riasztás (Discord)` (Discord Webhook: a webhook címe).
+
+## Licenc
+
+MIT, lásd a `LICENSE` fájlt.
