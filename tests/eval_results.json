@@ -1,0 +1,541 @@
+{
+  "run_at": "2026-10-06 12:01",
+  "hits": 19,
+  "total": 20,
+  "results": [
+    {
+      "id": 1,
+      "headcount": 5,
+      "ok": true,
+      "seconds": 2.1,
+      "want_status": "priced",
+      "got_status": "priced",
+      "want_items": {
+        "MOB-PLUS": 5,
+        "NET-300": 1
+      },
+      "got_items": {
+        "MOB-PLUS": 5,
+        "NET-300": 1
+      },
+      "want_totals": {
+        "24": 993400
+      },
+      "got_totals": {
+        "24": 993400
+      },
+      "problems": [],
+      "message": null
+    },
+    {
+      "id": 2,
+      "headcount": 8,
+      "ok": true,
+      "seconds": 2.2,
+      "want_status": "priced",
+      "got_status": "priced",
+      "want_items": {
+        "CLD-MAIL": 8,
+        "CLD-BACKUP": 8,
+        "DEV-LAPTOP-STD": 3
+      },
+      "got_items": {
+        "DEV-LAPTOP-STD": 3,
+        "CLD-BACKUP": 8,
+        "CLD-MAIL": 8
+      },
+      "want_totals": {
+        "12": 1191480
+      },
+      "got_totals": {
+        "12": 1191480
+      },
+      "problems": [],
+      "message": null
+    },
+    {
+      "id": 3,
+      "headcount": 12,
+      "ok": true,
+      "seconds": 2.2,
+      "want_status": "priced",
+      "got_status": "priced",
+      "want_items": {
+        "MOB-MAX": 12,
+        "DEV-PHONE-PRO": 12,
+        "NET-1000": 1,
+        "NET-FIXIP": 1
+      },
+      "got_items": {
+        "MOB-MAX": 12,
+        "NET-1000": 1,
+        "NET-FIXIP": 1,
+        "DEV-PHONE-PRO": 12
+      },
+      "want_totals": {
+        "24": 6851968
+      },
+      "got_totals": {
+        "24": 6851968
+      },
+      "problems": [],
+      "message": null
+    },
+    {
+      "id": 4,
+      "headcount": 15,
+      "ok": true,
+      "seconds": 2.9,
+      "want_status": "priced",
+      "got_status": "priced",
+      "want_items": {
+        "DEV-LAPTOP-PRO": 6,
+        "DEV-LAPTOP-STD": 9,
+        "DEV-MONITOR": 15,
+        "DEV-DOCK": 15
+      },
+      "got_items": {
+        "DEV-DOCK": 15,
+        "DEV-LAPTOP-PRO": 6,
+        "DEV-LAPTOP-STD": 9,
+        "DEV-MONITOR": 15
+      },
+      "want_totals": {
+        "12": 6438150,
+        "24": 6438150
+      },
+      "got_totals": {
+        "12": 6438150,
+        "24": 6438150
+      },
+      "problems": [],
+      "message": null
+    },
+    {
+      "id": 5,
+      "headcount": 20,
+      "ok": true,
+      "seconds": 2.3,
+      "want_status": "priced",
+      "got_status": "priced",
+      "want_items": {
+        "NET-1000": 1,
+        "DEV-ROUTER": 2,
+        "OPS-NETWORK": 1,
+        "OPS-HELPDESK": 20
+      },
+      "got_items": {
+        "NET-1000": 1,
+        "DEV-ROUTER": 2,
+        "OPS-HELPDESK": 20,
+        "OPS-NETWORK": 1
+      },
+      "want_totals": {
+        "12": 1908600,
+        "24": 3143400
+      },
+      "got_totals": {
+        "12": 1908600,
+        "24": 3143400
+      },
+      "problems": [],
+      "message": null
+    },
+    {
+      "id": 6,
+      "headcount": 25,
+      "ok": true,
+      "seconds": 2.5,
+      "want_status": "priced",
+      "got_status": "priced",
+      "want_items": {
+        "MOB-PLUS": 15,
+        "MOB-MAX": 5,
+        "MOB-START": 5
+      },
+      "got_items": {
+        "MOB-MAX": 5,
+        "MOB-PLUS": 15,
+        "MOB-START": 5
+      },
+      "want_totals": {
+        "12": 1773900
+      },
+      "got_totals": {
+        "12": 1773900
+      },
+      "problems": [],
+      "message": null
+    },
+    {
+      "id": 7,
+      "headcount": 30,
+      "ok": true,
+      "seconds": 1.9,
+      "want_status": "priced",
+      "got_status": "priced",
+      "want_items": {
+        "CLD-OFFICE": 30,
+        "OPS-SECURITY": 30,
+        "CLD-VPS": 2
+      },
+      "got_items": {
+        "CLD-OFFICE": 30,
+        "CLD-VPS": 2,
+        "OPS-SECURITY": 30
+      },
+      "want_totals": {
+        "24": 4223280
+      },
+      "got_totals": {
+        "24": 4223280
+      },
+      "problems": [],
+      "message": null
+    },
+    {
+      "id": 8,
+      "headcount": 40,
+      "ok": true,
+      "seconds": 2.9,
+      "want_status": "priced",
+      "got_status": "priced",
+      "want_items": {
+        "MOB-PLUS": 30,
+        "MOB-MAX": 10,
+        "NET-1000": 1,
+        "DEV-LAPTOP-STD": 15,
+        "CLD-MAIL": 40
+      },
+      "got_items": {
+        "MOB-MAX": 10,
+        "MOB-PLUS": 30,
+        "NET-1000": 1,
+        "DEV-LAPTOP-STD": 15,
+        "CLD-MAIL": 40
+      },
+      "want_totals": {
+        "12": 8483710,
+        "24": 11748670
+      },
+      "got_totals": {
+        "12": 8483710,
+        "24": 11748670
+      },
+      "problems": [],
+      "message": null
+    },
+    {
+      "id": 9,
+      "headcount": 50,
+      "ok": true,
+      "seconds": 2.5,
+      "want_status": "priced",
+      "got_status": "priced",
+      "want_items": {
+        "DEV-LAPTOP-PRO": 10,
+        "DEV-LAPTOP-STD": 40,
+        "OPS-INSTALL": 50
+      },
+      "got_items": {
+        "DEV-LAPTOP-PRO": 10,
+        "DEV-LAPTOP-STD": 40,
+        "OPS-INSTALL": 50
+      },
+      "want_totals": {
+        "12": 15303500,
+        "24": 15303500
+      },
+      "got_totals": {
+        "12": 15303500,
+        "24": 15303500
+      },
+      "problems": [],
+      "message": null
+    },
+    {
+      "id": 10,
+      "headcount": 60,
+      "ok": true,
+      "seconds": 2.3,
+      "want_status": "priced",
+      "got_status": "priced",
+      "want_items": {
+        "MOB-START": 60,
+        "NET-2000": 1,
+        "OPS-HELPDESK": 60
+      },
+      "got_items": {
+        "MOB-START": 60,
+        "NET-2000": 1,
+        "OPS-HELPDESK": 60
+      },
+      "want_totals": {
+        "12": 6530040
+      },
+      "got_totals": {
+        "12": 6530040
+      },
+      "problems": [],
+      "message": null
+    },
+    {
+      "id": 11,
+      "headcount": 80,
+      "ok": true,
+      "seconds": 2.2,
+      "want_status": "priced",
+      "got_status": "priced",
+      "want_items": {
+        "NET-1000": 2,
+        "NET-FIXIP": 2,
+        "CLD-MAIL": 80
+      },
+      "got_items": {
+        "NET-1000": 2,
+        "NET-FIXIP": 2,
+        "CLD-MAIL": 80
+      },
+      "want_totals": {
+        "24": 4045520
+      },
+      "got_totals": {
+        "24": 4045520
+      },
+      "problems": [],
+      "message": null
+    },
+    {
+      "id": 12,
+      "headcount": 100,
+      "ok": true,
+      "seconds": 2.2,
+      "want_status": "priced",
+      "got_status": "priced",
+      "want_items": {
+        "MOB-PLUS": 80,
+        "MOB-MAX": 20,
+        "DEV-PHONE-STD": 100
+      },
+      "got_items": {
+        "MOB-MAX": 20,
+        "MOB-PLUS": 80,
+        "DEV-PHONE-STD": 100
+      },
+      "want_totals": {
+        "24": 22832800
+      },
+      "got_totals": {
+        "24": 22832800
+      },
+      "problems": [],
+      "message": null
+    },
+    {
+      "id": 13,
+      "headcount": 120,
+      "ok": true,
+      "seconds": 2.9,
+      "want_status": "priced",
+      "got_status": "priced",
+      "want_items": {
+        "CLD-OFFICE": 120,
+        "CLD-BACKUP": 120,
+        "OPS-SECURITY": 120,
+        "OPS-HELPDESK": 120,
+        "CLD-VPS": 3
+      },
+      "got_items": {
+        "CLD-BACKUP": 120,
+        "CLD-OFFICE": 120,
+        "CLD-VPS": 3,
+        "OPS-HELPDESK": 120,
+        "OPS-SECURITY": 120
+      },
+      "want_totals": {
+        "12": 16645140,
+        "24": 29625480
+      },
+      "got_totals": {
+        "12": 16645140,
+        "24": 29625480
+      },
+      "problems": [],
+      "message": null
+    },
+    {
+      "id": 14,
+      "headcount": 150,
+      "ok": true,
+      "seconds": 2.9,
+      "want_status": "priced",
+      "got_status": "priced",
+      "want_items": {
+        "DEV-LAPTOP-STD": 30,
+        "DEV-MONITOR": 30,
+        "DEV-DOCK": 30,
+        "OPS-INSTALL": 30,
+        "OPS-NETWORK": 1,
+        "DEV-ROUTER": 4,
+        "MOB-PLUS": 110,
+        "MOB-MAX": 40
+      },
+      "got_items": {
+        "MOB-MAX": 40,
+        "MOB-PLUS": 110,
+        "DEV-DOCK": 30,
+        "DEV-LAPTOP-STD": 30,
+        "DEV-MONITOR": 30,
+        "DEV-ROUTER": 4,
+        "OPS-INSTALL": 30,
+        "OPS-NETWORK": 1
+      },
+      "want_totals": {
+        "24": 29780462
+      },
+      "got_totals": {
+        "24": 29780462
+      },
+      "problems": [],
+      "message": null
+    },
+    {
+      "id": 15,
+      "headcount": 200,
+      "ok": true,
+      "seconds": 2.7,
+      "want_status": "priced",
+      "got_status": "priced",
+      "want_items": {
+        "MOB-PLUS": 120,
+        "MOB-MAX": 50,
+        "MOB-START": 30,
+        "NET-2000": 1,
+        "NET-FIXIP": 1,
+        "CLD-MAIL": 200,
+        "OPS-SECURITY": 200,
+        "CLD-VPS": 5
+      },
+      "got_items": {
+        "MOB-MAX": 50,
+        "MOB-PLUS": 120,
+        "MOB-START": 30,
+        "NET-2000": 1,
+        "NET-FIXIP": 1,
+        "CLD-MAIL": 200,
+        "CLD-VPS": 5,
+        "OPS-SECURITY": 200
+      },
+      "want_totals": {
+        "24": 37790400
+      },
+      "got_totals": {
+        "24": 37790400
+      },
+      "problems": [],
+      "message": null
+    },
+    {
+      "id": 16,
+      "headcount": 10,
+      "ok": false,
+      "seconds": 2.0,
+      "want_status": "priced",
+      "got_status": "priced",
+      "want_items": {
+        "DEV-PHONE-STD": 10,
+        "MOB-MAX": 10
+      },
+      "got_items": {
+        "MOB-MAX": 10
+      },
+      "want_totals": {
+        "12": 2293220
+      },
+      "got_totals": {
+        "12": 1138920
+      },
+      "problems": [],
+      "message": null
+    },
+    {
+      "id": 17,
+      "headcount": 35,
+      "ok": true,
+      "seconds": 7.1,
+      "want_status": "needs_clarification",
+      "got_status": "needs_clarification",
+      "want_items": {},
+      "got_items": {},
+      "want_totals": {},
+      "got_totals": {},
+      "problems": [
+        "Nincs az árlistán: 3 db színes lézernyomtató"
+      ],
+      "message": null
+    },
+    {
+      "id": 18,
+      "headcount": null,
+      "ok": true,
+      "seconds": 2.0,
+      "want_status": "needs_clarification",
+      "got_status": "needs_clarification",
+      "want_items": {},
+      "got_items": {},
+      "want_totals": {},
+      "got_totals": {},
+      "problems": [
+        "Hiányzik a mennyiség: DEV-LAPTOP-STD",
+        "Hiányzik a mennyiség: MOB-PLUS"
+      ],
+      "message": null
+    },
+    {
+      "id": 19,
+      "headcount": 70,
+      "ok": true,
+      "seconds": 1.9,
+      "want_status": "needs_clarification",
+      "got_status": "needs_clarification",
+      "want_items": {},
+      "got_items": {},
+      "want_totals": {},
+      "got_totals": {},
+      "problems": [
+        "Nincs az árlistán: videokonferencia-rendszer a 2 tárgyalóba"
+      ],
+      "message": null
+    },
+    {
+      "id": 20,
+      "headcount": 45,
+      "ok": true,
+      "seconds": 2.5,
+      "want_status": "priced",
+      "got_status": "priced",
+      "want_items": {
+        "MOB-PLUS": 39,
+        "MOB-MAX": 6,
+        "NET-300": 1,
+        "CLD-OFFICE": 45,
+        "DEV-PHONE-PRO": 6
+      },
+      "got_items": {
+        "MOB-MAX": 6,
+        "MOB-PLUS": 39,
+        "NET-300": 1,
+        "DEV-PHONE-PRO": 6,
+        "CLD-OFFICE": 45
+      },
+      "want_totals": {
+        "24": 12192760
+      },
+      "got_totals": {
+        "24": 12192760
+      },
+      "problems": [],
+      "message": null
+    }
+  ]
+}

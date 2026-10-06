@@ -1,0 +1,51 @@
+# Helyi fejlesztői környezet. Indítás: docker compose up -d
+# A portok szándékosan nem a megszokottak, hogy ne ütközzenek más projekttel.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ajanlat
+      POSTGRES_USER: ajanlat
+      POSTGRES_PASSWORD: ajanlat-dev # csak helyi fejlesztéshez; élesben a Dokploy ad jelszót
+    ports:
+      - "127.0.0.1:5544:5432"
+    volumes:
+      # az első indításkor a Postgres név szerinti sorrendben lefuttatja az itt lévő .sql fájlokat
+      - ./db:/docker-entrypoint-initdb.d:ro
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ajanlat -d ajanlat"]
+      interval: 3s
+      retries: 20
+
+  pdf:
+    build: ./pdf-service
+    ports:
+      - "127.0.0.1:8300:8000"
+
+  n8n:
+    image: n8nio/n8n:2.41.6 # ugyanaz a verzió, mint a martech-lab gépen
+    environment:
+      GENERIC_TIMEZONE: Europe/Budapest
+      N8N_DIAGNOSTICS_ENABLED: "false"
+    ports:
+      - "127.0.0.1:5679:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - ./n8n:/workflows:ro
+      - ./tests:/tests:ro
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Ál-modell, csak teszthez: docker compose --profile test up -d
+  fake-llm:
+    image: python:3.13-alpine
+    profiles: ["test"]
+    command: python /fake_llm.py
+    volumes:
+      - ./tests/fake_llm.py:/fake_llm.py:ro
+
+volumes:
+  db-data:
+  n8n-data:

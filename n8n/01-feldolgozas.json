@@ -1,0 +1,350 @@
+{
+  "id": "ajanlatFeldolgozas",
+  "name": "Ajánlat 1 – Feldolgozás",
+  "nodes": [
+    {
+      "id": "4b21495b-0f74-5675-a546-fa8b4e13bccb",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ajanlatkeres",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "ajanlatkeres"
+    },
+    {
+      "id": "81a24305-f4ba-5630-b9a1-7b59a01186f8",
+      "name": "Beállítások",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9e660731-0f8b-54ad-b5d4-f59d645b0b16",
+              "name": "llm_url",
+              "value": "https://opencode.ai/zen/go/v1/chat/completions",
+              "type": "string"
+            },
+            {
+              "id": "c6d969c7-fe1f-5dc1-82b8-993520171f2c",
+              "name": "llm_model",
+              "value": "deepseek-v4.1-flash",
+              "type": "string"
+            },
+            {
+              "id": "324cc318-e127-5ee5-a047-f51cedb939a8",
+              "name": "prompt",
+              "value": "Egy üzleti telekom- és IT-szolgáltató ajánlatkérés-feldolgozója vagy.\nA feladatod: a szabad szöveges kérésből kiemelni a tételeket és a mennyiségeket. Árat SOHA ne írj, azt az adatbázis számolja.\n\nCsak az alábbi árlista azonosítóit (sku) használhatod:\n[[CATALOG]]\n\nSzabályok:\n- Ha a kérés \"ebből N\" formában részhalmazt ad meg, vond le a főtételből. Példa: \"40 mobil, ebből 10 korlátlan\" = 30 db MOB-PLUS és 10 db MOB-MAX.\n- Ha egy fejenkénti tételnél (egység: fő) nincs mennyiség, a kérésben szereplő létszámot használd. Ha létszám sincs, a qty legyen null.\n- Telephelyenkénti tételnél (egység: telephely) a mennyiség 1, ha a kérés nem ír többet.\n- Ha egy kért dolog nincs az árlistán, ne erőltesd rá egy hasonló tételre: tedd az unknown listába.\n- term_months: 12 vagy 24, ha a kérés megadja a hűségidőt (1 év = 12, 2 év = 24), különben null.\n- deadline: YYYY-MM-DD, ha a kérés konkrét határidőt ad, különben null.\n- headcount: a létszám, ha szerepel, különben null.\n\nCsak egyetlen JSON-objektummal válaszolj, magyarázat nélkül, ebben a formában:\n{\"items\": [{\"sku\": \"MOB-PLUS\", \"qty\": 30, \"source\": \"a kérés idevágó részlete\"}], \"unknown\": [{\"text\": \"amit nem találtál az árlistán\"}], \"term_months\": null, \"deadline\": null, \"headcount\": null}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "notes": "A modell, a végpont és a prompt itt cserélhető, egy helyen."
+    },
+    {
+      "id": "6d380fd7-edc0-5f50-b599-1fbf52391fc8",
+      "name": "Kérés mentése",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO requests (email, raw_text) VALUES ($1, $2) RETURNING id AS request_id;",
+        "options": {
+          "queryReplacement": "={{ [ $('Webhook').item.json.body.email, $('Webhook').item.json.body.text ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "ajanlatDbCred0001",
+          "name": "Ajánlat DB"
+        }
+      }
+    },
+    {
+      "id": "3950cd28-f1c1-54b6-82d0-d156f3ca3560",
+      "name": "Árlista lekérése",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT string_agg(sku || ' | ' || name || ' | egység: ' || unit || ' | ' || hint, E'\\n' ORDER BY category, sku) AS catalog FROM products;",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "ajanlatDbCred0001",
+          "name": "Ajánlat DB"
+        }
+      }
+    },
+    {
+      "id": "79fe8f5b-e9f0-5688-ba70-b31631863107",
+      "name": "Modell: tételek kiolvasása",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Beállítások').item.json.llm_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: $('Beállítások').item.json.llm_model,\n  temperature: 0,\n  max_tokens: 800,\n  thinking: { type: 'disabled' },\n  messages: [\n    { role: 'system', content: $('Beállítások').item.json.prompt.replace('[[CATALOG]]', $json.catalog) },\n    { role: 'user', content: $('Webhook').item.json.body.text }\n  ]\n}) }}",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-opencode-session",
+              "value": "=ajanlat-{{ $('Kérés mentése').item.json.request_id }}"
+            },
+            {
+              "name": "User-Agent",
+              "value": "ajanlatkeszito-demo/0.1"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ajanlatLlmCred001",
+          "name": "LLM kulcs"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "notes": "Az x-opencode-session fejlécet az opencode Go kéri (enélkül 400-at ad). Más szolgáltató figyelmen kívül hagyja."
+    },
+    {
+      "id": "603a75e6-323c-512d-9d77-536d8470015c",
+      "name": "Válasz értelmezése",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// A modell válasza szöveg. Ebből JSON-objektumot csinálunk.\n// Ha a modell ```json ... ``` keretbe tette, a keretet levágjuk.\nconst text = $json.choices?.[0]?.message?.content ?? '';\nconst cleaned = text.replace(/^\\s*```(?:json)?/i, '').replace(/```\\s*$/, '').trim();\n\nlet extracted;\ntry {\n  extracted = JSON.parse(cleaned);\n} catch (error) {\n  // Értelmezhetetlen válasz: nem találgatunk, az ellenőrzés visszakérdezésre viszi.\n  extracted = { items: [], unknown: [{ text: 'a kérést nem sikerült értelmezni' }] };\n}\n\nreturn {\n  json: {\n    request_id: $('Kérés mentése').item.json.request_id,\n    extracted,\n  },\n};"
+      }
+    },
+    {
+      "id": "08205aaa-818e-543b-b0cf-282bd12b3e3b",
+      "name": "Ellenőrzés és árazás",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1320,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT process_request($1::bigint, $2::jsonb) AS result;",
+        "options": {
+          "queryReplacement": "={{ [ $json.request_id, JSON.stringify($json.extracted) ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "ajanlatDbCred0001",
+          "name": "Ajánlat DB"
+        }
+      }
+    },
+    {
+      "id": "c23e8404-d303-5b8f-a689-64813cf1b22d",
+      "name": "Árazható?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1540,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c81049bc-e4d4-5b79-913e-ee37bafdc449",
+              "leftValue": "={{ $json.result.status }}",
+              "rightValue": "priced",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "59b46829-b8d2-59d0-b0b4-dc8cdf11ce9b",
+      "name": "Válasz: ajánlat kész",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        -100
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { request_id: $('Kérés mentése').item.json.request_id, ...$json.result } }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "76e5b6ae-0d17-5f42-8f47-54963b7073ff",
+      "name": "Válasz: visszakérdezés",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        100
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { request_id: $('Kérés mentése').item.json.request_id, ...$json.result } }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Beállítások",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Beállítások": {
+      "main": [
+        [
+          {
+            "node": "Kérés mentése",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kérés mentése": {
+      "main": [
+        [
+          {
+            "node": "Árlista lekérése",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Árlista lekérése": {
+      "main": [
+        [
+          {
+            "node": "Modell: tételek kiolvasása",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Modell: tételek kiolvasása": {
+      "main": [
+        [
+          {
+            "node": "Válasz értelmezése",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Válasz értelmezése": {
+      "main": [
+        [
+          {
+            "node": "Ellenőrzés és árazás",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ellenőrzés és árazás": {
+      "main": [
+        [
+          {
+            "node": "Árazható?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Árazható?": {
+      "main": [
+        [
+          {
+            "node": "Válasz: ajánlat kész",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Válasz: visszakérdezés",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {}
+}

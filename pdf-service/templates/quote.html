@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<title>Ajánlat {{ quotes[0].number if quotes else "" }}</title>
+<style>
+  @page { size: A4; margin: 14mm 14mm 14mm 14mm; }
+  :root { --ink: #14213d; --brand: #1f4fd8; --muted: #5b6577; --line: #d9deea; --soft: #f3f6fc; }
+  * { box-sizing: border-box; }
+  body { font-family: "Inter", "Noto Sans", "DejaVu Sans", Arial, sans-serif; color: var(--ink); font-size: 9.5pt; line-height: 1.45; margin: 0; }
+  .page { page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+
+  header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid var(--brand); padding-bottom: 9pt; margin-bottom: 14pt; }
+  .logo { display: flex; align-items: center; gap: 8pt; }
+  .logo-mark { width: 26pt; height: 26pt; border-radius: 6pt; background: var(--brand); color: #fff; font-weight: 700; font-size: 14pt; display: flex; align-items: center; justify-content: center; }
+  .logo-name { font-size: 13pt; font-weight: 700; }
+  .logo-tag { color: var(--muted); font-size: 8pt; }
+  .doc-meta { text-align: right; font-size: 8.5pt; color: var(--muted); }
+  .doc-meta strong { display: block; color: var(--ink); font-size: 12pt; }
+
+  h1 { font-size: 16pt; margin: 0 0 3pt; }
+  h2 { font-size: 10.5pt; margin: 11pt 0 4pt; }
+  .hint { font-weight: 400; color: var(--muted); font-size: 8.5pt; }
+  .lead { color: var(--muted); margin: 0 0 10pt; }
+  .request { background: var(--soft); border-left: 3px solid var(--brand); padding: 7pt 10pt; font-style: italic; margin-bottom: 4pt; }
+
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); border-bottom: 1px solid var(--ink); padding: 4pt 5pt; }
+  td { padding: 3.5pt 5pt; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .cat td { background: var(--soft); font-weight: 700; font-size: 8pt; text-transform: uppercase; letter-spacing: .04em; }
+  .list-price { color: var(--muted); text-decoration: line-through; font-size: 7.5pt; margin-right: 3pt; }
+  .dash { color: var(--muted); }
+
+  .closing { break-inside: avoid; }
+  .totals { margin-top: 10pt; margin-left: auto; width: 78%; }
+  .totals td { border-bottom: 1px solid var(--line); }
+  .totals .grand td { border-top: 2px solid var(--ink); border-bottom: none; font-weight: 700; font-size: 10.5pt; padding-top: 7pt; }
+  .saving { margin-top: 8pt; text-align: right; color: var(--brand); font-weight: 600; }
+
+  .compare th, .compare td { text-align: right; }
+  .compare th:first-child, .compare td:first-child { text-align: left; }
+
+  footer { margin-top: 12pt; padding-top: 7pt; border-top: 1px solid var(--line); color: var(--muted); font-size: 7.5pt; }
+</style>
+</head>
+<body>
+
+{% for q in quotes %}
+{% set t = q.priced.totals %}
+<section class="page">
+  <header>
+    <div class="logo">
+      <div class="logo-mark">{{ company.name[0] }}</div>
+      <div>
+        <div class="logo-name">{{ company.name }}</div>
+        <div class="logo-tag">{{ company.tagline }}</div>
+      </div>
+    </div>
+    <div class="doc-meta">
+      <strong>{{ q.number }}</strong>
+      Kelt: {{ today.strftime("%Y. %m. %d.") }}<br>
+      Érvényes: {{ q.valid_until.strftime("%Y. %m. %d") }}-ig
+    </div>
+  </header>
+
+  <h1>Árajánlat – {{ q.term_months }} hónapos hűségidővel</h1>
+  <p class="lead">Címzett: {{ customer_email }}{% if quotes|length > 1 %} · {{ loop.index }}. változat a {{ quotes|length }}-ből{% endif %}</p>
+
+  {% if loop.first %}
+  <h2>Az Ön kérése</h2>
+  <div class="request">{{ request_text }}</div>
+
+  {% if quotes|length > 1 %}
+  <h2>A két változat egymás mellett <span class="hint">– a kérésben nem szerepelt hűségidő, ezért mindkettőt kiszámoltuk</span></h2>
+  <table class="compare">
+    <tr><th>Hűségidő</th><th>Egyszeri költség (nettó)</th><th>Havi költség (nettó)</th><th>Teljes szerződéses érték (nettó)</th></tr>
+    {% for c in quotes %}
+    <tr>
+      <td>{{ c.term_months }} hónap ({{ c.number }})</td>
+      <td class="num">{{ c.priced.totals.one_time_net|huf }}</td>
+      <td class="num">{{ c.priced.totals.monthly_net|huf }}</td>
+      <td class="num">{{ c.priced.totals.contract_net|huf }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+  {% endif %}
+
+  <h2>Tételek</h2>
+  <table>
+    <tr>
+      <th>Tétel</th><th class="num">Menny.</th><th class="num">Kedv.</th>
+      <th class="num">Havidíj / egység</th><th class="num">Havidíj</th>
+      <th class="num">Egyszeri / egység</th><th class="num">Egyszeri díj</th>
+    </tr>
+    {# a category_names sorrendje adja a kategóriák sorrendjét a PDF-ben #}
+    {% for category in category_names %}
+      {% set lines = q.priced.lines|selectattr("category", "equalto", category)|list %}
+      {% if lines %}
+      <tr class="cat"><td colspan="7">{{ category_names[category] }}</td></tr>
+      {% for l in lines %}
+      <tr>
+        <td>{{ l.name }}</td>
+        <td class="num">{{ l.qty }} {{ l.unit }}</td>
+        <td class="num">{% if l.discount_pct %}−{{ l.discount_pct|pct }}{% else %}<span class="dash">–</span>{% endif %}</td>
+        <td class="num">
+          {% if l.monthly_unit %}
+            {% if l.monthly_list != l.monthly_unit %}<span class="list-price">{{ l.monthly_list|huf }}</span>{% endif %}
+            {{ l.monthly_unit|huf }}
+          {% else %}<span class="dash">–</span>{% endif %}
+        </td>
+        <td class="num">{% if l.monthly_total %}{{ l.monthly_total|huf }}{% else %}<span class="dash">–</span>{% endif %}</td>
+        <td class="num">
+          {% if l.one_time_unit %}
+            {% if l.one_time_list != l.one_time_unit %}<span class="list-price">{{ l.one_time_list|huf }}</span>{% endif %}
+            {{ l.one_time_unit|huf }}
+          {% else %}<span class="dash">–</span>{% endif %}
+        </td>
+        <td class="num">{% if l.one_time_total %}{{ l.one_time_total|huf }}{% else %}<span class="dash">–</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      {% endif %}
+    {% endfor %}
+  </table>
+
+  <div class="closing">
+  <table class="totals">
+    <tr><th></th><th class="num">Nettó</th><th class="num">Bruttó ({{ q.priced.vat_pct }}% áfával)</th></tr>
+    <tr><td>Egyszeri költség</td><td class="num">{{ t.one_time_net|huf }}</td><td class="num">{{ t.one_time_gross|huf }}</td></tr>
+    <tr><td>Havi költség</td><td class="num">{{ t.monthly_net|huf }}</td><td class="num">{{ t.monthly_gross|huf }}</td></tr>
+    <tr class="grand"><td>Teljes szerződéses érték ({{ q.term_months }} hónap)</td><td class="num">{{ t.contract_net|huf }}</td><td class="num">{{ t.contract_gross|huf }}</td></tr>
+  </table>
+  {% if t.discount_net %}
+  <div class="saving">A mennyiségi kedvezménnyel {{ t.discount_net|huf }} megtakarítás a teljes időszakra (nettó).</div>
+  {% endif %}
+
+  <footer>
+    {{ company.name }} · {{ company.address }} · {{ company.email }}<br>
+    Az ajánlat {{ q.valid_until.strftime("%Y. %m. %d") }}-ig érvényes. A teljes szerződéses érték: egyszeri költség + havi költség × {{ q.term_months }} hónap.<br>
+    {{ company.note }}
+  </footer>
+  </div>
+</section>
+{% endfor %}
+
+</body>
+</html>
