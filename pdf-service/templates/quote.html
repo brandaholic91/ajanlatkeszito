@@ -33,7 +33,10 @@
   .list-price { color: var(--muted); text-decoration: line-through; font-size: 7.5pt; margin-right: 3pt; }
   .dash { color: var(--muted); }
 
-  .closing { break-inside: avoid; }
+  /* Az utolsó kategória és az összesítő egy tbody: a böngésző nem törheti ketté,
+     így a végösszeg soha nem kerül egyedül új oldalra. */
+  .keep { break-inside: avoid; }
+  .closing-row > td { padding: 0; border-bottom: none; }
   .totals { margin-top: 10pt; margin-left: auto; width: 78%; }
   .totals td { border-bottom: 1px solid var(--line); }
   .totals .grand td { border-top: 2px solid var(--ink); border-bottom: none; font-weight: 700; font-size: 10.5pt; padding-top: 7pt; }
@@ -89,16 +92,25 @@
   {% endif %}
 
   <h2>Tételek</h2>
+  {# a category_names sorrendje adja a kategóriák sorrendjét a PDF-ben; csak azok kellenek, amelyekben van tétel #}
+  {% set used = namespace(categories=[]) %}
+  {% for category in category_names %}
+    {% if q.priced.lines|selectattr("category", "equalto", category)|list %}
+      {% set used.categories = used.categories + [category] %}
+    {% endif %}
+  {% endfor %}
   <table>
+    {# a thead sorait a böngésző minden oldal tetején megismétli, ha a táblázat áttörik #}
+    <thead>
     <tr>
       <th>Tétel</th><th class="num">Menny.</th><th class="num">Kedv.</th>
       <th class="num">Havidíj / egység</th><th class="num">Havidíj</th>
       <th class="num">Egyszeri / egység</th><th class="num">Egyszeri díj</th>
     </tr>
-    {# a category_names sorrendje adja a kategóriák sorrendjét a PDF-ben #}
-    {% for category in category_names %}
+    </thead>
+    {% for category in used.categories %}
       {% set lines = q.priced.lines|selectattr("category", "equalto", category)|list %}
-      {% if lines %}
+      <tbody{% if loop.last %} class="keep"{% endif %}>
       <tr class="cat"><td colspan="7">{{ category_names[category] }}</td></tr>
       {% for l in lines %}
       <tr>
@@ -121,11 +133,8 @@
         <td class="num">{% if l.one_time_total %}{{ l.one_time_total|huf }}{% else %}<span class="dash">–</span>{% endif %}</td>
       </tr>
       {% endfor %}
-      {% endif %}
-    {% endfor %}
-  </table>
-
-  <div class="closing">
+      {% if loop.last %}
+      <tr class="closing-row"><td colspan="7">
   <table class="totals">
     <tr><th></th><th class="num">Nettó</th><th class="num">Bruttó ({{ q.priced.vat_pct }}% áfával)</th></tr>
     <tr><td>Egyszeri költség</td><td class="num">{{ t.one_time_net|huf }}</td><td class="num">{{ t.one_time_gross|huf }}</td></tr>
@@ -141,7 +150,11 @@
     Az ajánlat {{ q.valid_until.strftime("%Y. %m. %d") }}-ig érvényes. A teljes szerződéses érték: egyszeri költség + havi költség × {{ q.term_months }} hónap.<br>
     {{ company.note }}
   </footer>
-  </div>
+      </td></tr>
+      {% endif %}
+      </tbody>
+    {% endfor %}
+  </table>
 </section>
 {% endfor %}
 
