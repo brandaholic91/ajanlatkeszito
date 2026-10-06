@@ -3,12 +3,14 @@
 Három dolgot ellenőriznek:
   1. az árazás kézzel kiszámolt példákra a várt összeget adja,
   2. az ellenőrzés megfogja a hibás bemenetet,
-  3. a teljes lánc működik: webhook -> (ál-)modell -> árazás -> PDF.
+  3. a teljes lánc működik: webhook -> (ál-)modell -> árazás -> PDF,
+  4. a demóoldal négy végpontja (web/) ugyanezt a láncot végigviszi, és a hibás bemenetet elutasítja.
 """
 
 import hashlib
 import io
 import json
+import time
 import uuid
 from pathlib import Path
 
@@ -22,6 +24,7 @@ DB = "postgresql://ajanlat:ajanlat-dev@127.0.0.1:5544/ajanlat"
 WEBHOOK = "http://127.0.0.1:5679/webhook/ajanlatkeres"
 APPROVE = "http://127.0.0.1:5679/webhook/ajanlat-jovahagyas"
 PDF = "http://127.0.0.1:8300/render"
+WEB = "http://127.0.0.1:3000/api/requests"  # a demóoldal szerveroldala; a böngésző csak ezt látja
 FAKE_MAIL = "http://127.0.0.1:8399/emails"  # az ál-levélküldő; megmondja, mit kapott csatolmányként
 S3 = boto3.client(  # a helyi objektumtároló (RustFS), a docker-compose.yml-ben megadott helyi kulccsal
     "s3",
@@ -267,3 +270,119 @@ def test_default_daily_mail_limit_is_20(db):
     # a beállítás tényleg eljut a függvényig, második paraméterként
     assert "$2::integer" in nodes["Jóváhagyás"]["parameters"]["query"]
     assert "daily_mail_limit" in nodes["Jóváhagyás"]["parameters"]["options"]["queryReplacement"]
+
+
+# --- 5. A demóoldal végpontjai (web/) ---
+
+
+def web_create(text, public_id=None, email="vevo@example.com"):
+    """Beküld egy kérést a demóoldalon át, ugyanúgy, ahogy a böngésző teszi."""
+    public_id = public_id or str(uuid.uuid4())
+    response = httpx.post(WEB, json={"public_id": public_id, "email": email, "text": text}, timeout=60)
+    return public_id, response
+
+
+def web_poll(public_id, until, timeout=30):
+    """Fél másodpercenként lekérdezi az állapotot, mint az oldal, amíg az `until` lépések egyike meg nem jelenik a naplóban."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        response = httpx.get(f"{WEB}/{public_id}")
+        if response.status_code == 200 and set(until) & {event["step"] for event in response.json()["events"]}:
+            return response.json()
+        time.sleep(0.5)
+    raise AssertionError(f"{timeout} mp alatt nem jött meg a(z) {until} lépés")
+
+
+def test_web_full_flow_from_request_to_pdf(db):
+    """Beküldés -> figyelés az árazásig -> jóváhagyás -> a letöltött PDF bájtra az, ami a tárolóban van.
+
+    A helyi workflow napi levélkerete 100000 (tests/setup_local.sh), ezért a levélnek el kell mennie.
+    """
+    public_id, response = web_create(EXAMPLE_TEXT)
+    assert response.status_code == 201
+    assert response.json() == {"public_id": public_id, "status": "priced"}
+
+    status = web_poll(public_id, until=["priced"])
+    assert status["status"] == "priced"
+    assert [event["step"] for event in status["events"]] == ["received", "extracted", "checked", "priced"]
+    assert [quote["term_months"] for quote in status["quotes"]] == [12, 24]
+    assert status["quotes"][1]["totals"]["contract_net"] == 11_748_670
+    assert len(status["quotes"][1]["lines"]) == 5
+    assert status["pdf_available"] is False
+    # a belső sorszám nem szivároghat ki, kifelé csak a public_id azonosít
+    assert "id" not in status and "request_id" not in status
+
+    # jóváhagyás előtt még nincs mit letölteni
+    assert httpx.get(f"{WEB}/{public_id}/pdf").status_code == 404
+
+    approval = httpx.post(f"{WEB}/{public_id}/approve", timeout=60)
+    assert approval.status_code == 200
+    mail = approval.json()["status"]
+    assert mail == "sent"
+    assert approval.json()["number"] == status["quotes"][0]["number"]
+
+    status = web_poll(public_id, until=["sent", "email_skipped"])
+    assert [event["step"] for event in status["events"]][-3:] == ["approved", "pdf_stored", mail]
+    assert status["pdf_available"] is True
+
+    # dupla kattintás: a második jóváhagyás 409-et kap, ahogy az n8n-től jön
+    second = httpx.post(f"{WEB}/{public_id}/approve", timeout=60)
+    assert second.status_code == 409
+    assert second.json()["error"] == "not_approvable"
+
+    downloaded = httpx.get(f"{WEB}/{public_id}/pdf")
+    assert downloaded.status_code == 200
+    assert downloaded.headers["content-type"] == "application/pdf"
+    (key,) = db.execute("SELECT pdf_key FROM requests WHERE public_id = %s", (public_id,)).fetchone()
+    assert key in downloaded.headers["content-disposition"]
+    stored = S3.get_object(Bucket="ajanlat-demo", Key=key)["Body"].read()
+    assert downloaded.content == stored
+    assert downloaded.content.startswith(b"%PDF")
+
+
+def test_web_clarification_branch():
+    """Ha a kérésben olyan van, ami nincs az árlistán, ajánlat helyett a hibalista jön."""
+    public_id, response = web_create("Kell 5 mobil és 2 drón.")
+    assert response.status_code == 201
+    status = web_poll(public_id, until=["needs_clarification"])
+    assert status["status"] == "needs_clarification"
+    assert status["quotes"] == []
+    assert "Nincs az árlistán: 2 drón" in status["problems"]
+    assert [event["step"] for event in status["events"]] == ["received", "extracted", "checked", "needs_clarification"]
+    # ami nincs beárazva, azt jóváhagyni sem lehet
+    assert httpx.post(f"{WEB}/{public_id}/approve", timeout=60).status_code == 409
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"public_id": "nem-uuid", "email": "vevo@example.com", "text": EXAMPLE_TEXT},
+        {"email": "vevo@example.com", "text": EXAMPLE_TEXT},  # hiányzó azonosító
+        {"public_id": str(uuid.uuid4()), "email": "nem e-mail", "text": EXAMPLE_TEXT},
+        {"public_id": str(uuid.uuid4()), "email": "vevo@example.com", "text": "   "},
+        {"public_id": str(uuid.uuid4()), "email": "vevo@example.com", "text": "a" * 2001},
+    ],
+)
+def test_web_rejects_invalid_input(db, body):
+    """A hibás bemenet 400-at kap, és el sem jut az n8n-ig: nem lesz belőle sor az adatbázisban."""
+    response = httpx.post(WEB, json=body, timeout=60)
+    assert response.status_code == 400
+    assert response.json()["error"] == "invalid_input"
+    if "public_id" in body and body["public_id"] != "nem-uuid":
+        assert db.execute("SELECT count(*) FROM requests WHERE public_id = %s", (body["public_id"],)).fetchone()[0] == 0
+
+
+def test_web_same_public_id_twice_is_refused():
+    public_id, first = web_create(EXAMPLE_TEXT)
+    assert first.status_code == 201
+    _, second = web_create(EXAMPLE_TEXT, public_id=public_id)
+    assert second.status_code == 409
+    assert second.json()["error"] == "duplicate"
+
+
+def test_web_unknown_public_id():
+    unknown = str(uuid.uuid4())
+    assert httpx.get(f"{WEB}/{unknown}").status_code == 404
+    assert httpx.get(f"{WEB}/{unknown}/pdf").status_code == 404
+    assert httpx.post(f"{WEB}/{unknown}/approve", timeout=60).status_code == 409  # az n8n válasza megy tovább
+    assert httpx.get(f"{WEB}/nem-uuid").status_code == 400

@@ -1,0 +1,205 @@
+@import "tailwindcss";
+
+/*
+  A kinézet alapjai. A színek és a betűtípus a letölthető PDF-ajánlat sablonjából jönnek
+  (pdf-service/templates/quote.html), hogy az oldal és a PDF ugyanannak a cégnek látsszon.
+  A teljes leírás a repó gyökerében, a DESIGN.md-ben van.
+
+  A @theme blokkban megadott változókból a Tailwind osztályneveket készít:
+  a --color-ink miatt lesz text-ink, bg-ink és border-ink osztály, és így tovább.
+*/
+@theme {
+  /* A PDF-sablon öt színe, változtatás nélkül. */
+  --color-ink: #14213d; /* szöveg, vastag táblázatvonalak */
+  --color-brand: #1f4fd8; /* elsődleges gomb, folyamatjelzés, fókusz */
+  --color-muted: #5b6577; /* másodlagos szöveg, oszlopfejek */
+  --color-line: #d9deea; /* hajszálvonalak */
+  --color-soft: #f3f6fc; /* halvány kitöltés: amit a rendszer ír (napló, kategóriasor) */
+
+  /* Amit a web hozzátesz ugyanabban a családban. */
+  --color-paper: #ffffff; /* az oldal alapja, mint a papír */
+  --color-brand-strong: #173ea8; /* a gomb színe, amikor fölötte az egér */
+  --color-control: #7f8aa0; /* beviteli mezők kerete: a hajszálvonalnál sötétebb, hogy jól látsszon */
+
+  /* Állapotszínek. Mindegyiknek van egy szövegszíne, egy halvány háttere és egy keretszíne. */
+  --color-error: #a3241c;
+  --color-error-soft: #fdf2f1;
+  --color-error-line: #e3aaa5;
+  --color-notice: #744700;
+  --color-notice-soft: #fcf5e6;
+  --color-notice-line: #e2c588;
+  --color-ok: #17633f;
+
+  /* A betűtípust a layout.tsx tölti be (next/font), és ebben a változóban adja át. */
+  --font-sans: var(--font-noto-sans), "Noto Sans", "DejaVu Sans", Arial, sans-serif;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  line-height: 1.5;
+}
+
+/* A böngésző saját felületei is a palettából kapnak színt: kijelölés, szövegkurzor. */
+::selection {
+  background: var(--color-brand);
+  color: #ffffff;
+}
+
+input,
+textarea {
+  caret-color: var(--color-brand);
+}
+
+/* Billentyűzettel jól látható fókusz mindenen, amire rá lehet lépni. Egérkattintásnál nem jelenik meg. */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
+}
+
+@layer components {
+  /* ----- Gombok. Két fajta van: elsődleges (kitöltött) és szöveges (aláhúzott). ----- */
+  .button-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 2.75rem; /* 44 képpont: ujjal is kényelmesen eltalálható */
+    padding: 0.625rem 1.25rem;
+    border-radius: 0.375rem;
+    background: var(--color-brand);
+    color: #ffffff;
+    font-weight: 600;
+    text-decoration: none;
+    transition: background-color 150ms ease-out;
+  }
+  .button-primary:hover {
+    background: var(--color-brand-strong);
+  }
+  .button-primary:active {
+    background: var(--color-ink);
+  }
+  .button-primary:disabled {
+    background: var(--color-line);
+    color: var(--color-muted);
+    cursor: not-allowed;
+  }
+
+  .button-text {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.75rem;
+    color: var(--color-brand);
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+  .button-text:hover {
+    color: var(--color-brand-strong);
+  }
+  .button-text:disabled {
+    color: var(--color-muted);
+    cursor: not-allowed;
+  }
+
+  /* ----- Beviteli mező (szövegdoboz és e-mail). ----- */
+  .field {
+    width: 100%;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--color-control);
+    border-radius: 0.375rem;
+    background: var(--color-paper);
+    color: var(--color-ink);
+  }
+  .field::placeholder {
+    color: var(--color-muted);
+    opacity: 1;
+  }
+  .field:hover {
+    border-color: var(--color-ink);
+  }
+  .field:disabled {
+    background: var(--color-soft);
+    color: var(--color-muted);
+  }
+
+  /* ----- Táblázat, a PDF-ével azonos kezelés. ----- */
+  /* Oszlopfej: kicsi, nagybetűs, alatta sötét vonal. */
+  .col-head {
+    padding: 0.5rem 0.5rem;
+    border-bottom: 1px solid var(--color-ink);
+    color: var(--color-muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-align: left;
+    text-transform: uppercase;
+    vertical-align: bottom;
+  }
+  /* Adatcella: alatta hajszálvonal. */
+  .cell {
+    padding: 0.5rem 0.5rem;
+    border-bottom: 1px solid var(--color-line);
+    vertical-align: top;
+  }
+  /* Számoszlop: jobbra zárt, egyforma széles számjegyekkel, hogy a helyiértékek egymás alá kerüljenek. */
+  .num {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  /* A számoszlop feje viszont törhet több sorba: keskeny képernyőn különben szétfeszítené a táblázatot. */
+  .col-head.num {
+    white-space: normal;
+  }
+}
+
+/* ----- Mozgás. Csak állapotot jelez: megérkezett egy lépés, vagy éppen dolgozik valami. ----- */
+
+/* Egy új lépés sora: rövid beúszás, amikor megjelenik a naplóban. */
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.25rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.step-arrives {
+  animation: step-in 260ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* A "folyamatban" jel: forgó körív. */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spinner {
+  animation: spin 800ms linear infinite;
+}
+
+/* Aki a rendszerében kevesebb mozgást kért: nincs beúszás és forgás, a jel helyben, lassan halványul. */
+@keyframes soft-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .step-arrives {
+    animation: none;
+  }
+  .spinner {
+    animation: soft-pulse 1600ms ease-in-out infinite;
+  }
+  .button-primary {
+    transition: none;
+  }
+}

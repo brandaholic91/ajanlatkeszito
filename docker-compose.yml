@@ -67,6 +67,26 @@ services:
            || curl -sf -o /dev/null $$S3 -X PUT http://rustfs:9000/ajanlat-demo; do sleep 1; done
         echo "bucket kész"
 
+  # A demóoldal (Next.js). A böngésző csak ezzel beszél; az n8n-t, az adatbázist és a tárolót
+  # a web szolgáltatás éri el a belső hálózaton, a szolgáltatások nevével.
+  web:
+    build: ./web
+    environment:
+      DATABASE_URL: postgresql://ajanlat:ajanlat-dev@db:5432/ajanlat # csak helyi fejlesztéshez
+      N8N_BASE_URL: http://n8n:5678
+      S3_ENDPOINT: http://rustfs:9000
+      S3_ACCESS_KEY: ajanlat-dev
+      S3_SECRET_KEY: ajanlat-dev-secret
+      S3_BUCKET: ajanlat-demo
+      DAILY_REQUEST_LIMIT: "100000" # helyben gyakorlatilag nincs keret, mert minden tesztfutás kéréseket hoz létre; élesben 50
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+      n8n:
+        condition: service_started
+
   # Ál-modell, csak teszthez: docker compose --profile test up -d
   fake-llm:
     image: python:3.13-alpine
