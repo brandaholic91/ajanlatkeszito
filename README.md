@@ -38,12 +38,13 @@ Az oldal közben élő lépésnaplóban mutatja, hol tart a folyamat, és mennyi
 ## Mennyire megbízható
 
 - **Modell:** egy 20 kérésből álló mérésben 19 helyes eredmény (2026-10-06, egy futás, a promptot nem hangoltam a tesztkérésekre). Az egyetlen hiba egy ékezet nélküli, szlenges kérés volt, ahol a modell kihagyott egy tételt.
-- **Kód:** 38 automata teszt, ál-modellel, ál-levélküldővel és ál-riasztócsatornával. Ezek a bekötést és az árazást igazolják, a promptot nem.
+- **Kód:** 41 automata teszt, ál-modellel, ál-levélküldővel és ál-riasztócsatornával. Ezek a bekötést és az árazást igazolják, a promptot nem.
 
 ## Amiben a demó eltér az éles működéstől
 
 - **Az emlékeztető 2 perc után megy, és mindenkinek.** Élesben 72 óra után menne, és csak annak, aki nem válaszolt. A demóban nincs válaszfigyelés.
 - **Napi keret van:** legfeljebb 50 kérés és 40 levél naponta. Ha a levélkeret betelt, a PDF az oldalról ettől még letölthető.
+- **A kérések 14 nap után törlődnek**, a tárolt PDF-fel együtt. Az oldalon [adatkezelési tájékoztató](https://ajanlat-demo.growthframe.hu/adatkezeles) írja le, mi történik a megadott adatokkal.
 - **Az árlista és a cégnév kitalált.** Egyik ár sem valós szolgáltató díja.
 
 ## Kipróbálás helyben

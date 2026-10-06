@@ -21,7 +21,7 @@
           ]
         }
       },
-      "notes": "Negyedóránként fut: lezárja a beragadt kéréseket, és kiküldi az esedékes emlékeztetőket."
+      "notes": "Percenként fut: lezárja a beragadt kéréseket, kiküldi az esedékes emlékeztetőket, és törli a lejárt kéréseket."
     },
     {
       "id": "8703fd53-9315-4e8f-bf3d-db23ef4c878b",
@@ -82,12 +82,24 @@
               "name": "stuck_after_minutes",
               "value": 10,
               "type": "number"
+            },
+            {
+              "id": "71dd3754-8ef0-4484-8cf8-d9bc6cfe18d4",
+              "name": "delete_after_days",
+              "value": 14,
+              "type": "number"
+            },
+            {
+              "id": "a1cf68ea-8629-40f0-9709-09bb79c3608b",
+              "name": "pdf_bucket",
+              "value": "ajanlat-demo",
+              "type": "string"
             }
           ]
         },
         "options": {}
       },
-      "notes": "A levélküldő címe, a feladó, a napi levélkeret (közös az ajánlatokkal), az emlékeztető késleltetése és a beragadás határideje itt cserélhető, egy helyen."
+      "notes": "A levélküldő címe, a feladó, a napi levélkeret (közös az ajánlatokkal), az emlékeztető késleltetése, a beragadás határideje és a megőrzési idő (delete_after_days) itt cserélhető, egy helyen."
     },
     {
       "id": "a6739fe9-cf8c-4a8f-844c-b96e0a6c5555",
@@ -284,13 +296,133 @@
       }
     },
     {
+      "id": "c688ad4e-6519-472a-a9e7-42304de15207",
+      "name": "Lejárt kérések",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        440,
+        400
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT expired_requests($1::integer) AS result;",
+        "options": {
+          "queryReplacement": "={{ [ $('Beállítások').item.json.delete_after_days ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "ajanlatDbCred0001",
+          "name": "Ajánlat DB"
+        }
+      },
+      "notes": "Adatmegőrzés: a 14 napnál régebbi kérések. Az adatkezelési tájékoztató ezt ígéri."
+    },
+    {
+      "id": "c7575b97-5745-4927-99a5-4cd3d29932f0",
+      "name": "Kérésenként egy elem",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        660,
+        400
+      ],
+      "parameters": {
+        "fieldToSplitOut": "result.requests",
+        "options": {}
+      },
+      "notes": "A lista minden eleméből külön elem lesz. Ha a lista üres, itt megáll az ág."
+    },
+    {
+      "id": "037ec6ea-d979-4a80-a651-2420e6e2ef86",
+      "name": "Van tárolt PDF?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "a852977f-001e-4db4-bc24-d71ad44fdbe5",
+              "leftValue": "={{ $json.pdf_key }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "c9976c5d-ab2b-4b26-ba77-f98800ec324a",
+      "name": "PDF törlése",
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        400
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "delete",
+        "bucketName": "={{ $('Beállítások').item.json.pdf_bucket }}",
+        "fileKey": "={{ $json.pdf_key }}",
+        "options": {}
+      },
+      "credentials": {
+        "s3": {
+          "id": "ajanlatS3Cred0001",
+          "name": "PDF tároló"
+        }
+      },
+      "notes": "Előbb a fájl, utána az adatbázis sora: ha ez elhasal, a sor megmarad, és a következő futás újra megpróbálja."
+    },
+    {
+      "id": "4676ec5c-f5e0-4fb5-aac0-11a4a166b079",
+      "name": "Kérés törlése",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1320,
+        500
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT delete_expired_request($1::bigint, $2::integer) AS deleted;",
+        "options": {
+          "queryReplacement": "={{ [ $('Kérésenként egy elem').item.json.request_id, $('Beállítások').item.json.delete_after_days ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "ajanlatDbCred0001",
+          "name": "Ajánlat DB"
+        }
+      }
+    },
+    {
       "id": "7fb399f3-3305-4465-a23f-c8cf600a12cf",
       "name": "Hiba egy workflow-ban",
       "type": "n8n-nodes-base.errorTrigger",
       "typeVersion": 1,
       "position": [
         0,
-        500
+        700
       ],
       "parameters": {},
       "notes": "Akkor indul, ha az Ajánlat 1, 2 vagy 3 workflow egy futása hibával áll le (azok beállításában ez a workflow a hibakezelő)."
@@ -302,7 +434,7 @@
       "typeVersion": 2,
       "position": [
         220,
-        500
+        700
       ],
       "parameters": {
         "authentication": "webhook",
@@ -351,6 +483,11 @@
           },
           {
             "node": "Esedékes emlékeztetők",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Lejárt kérések",
             "type": "main",
             "index": 0
           }
@@ -430,6 +567,57 @@
         [
           {
             "node": "Riasztás: workflow-hiba",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lejárt kérések": {
+      "main": [
+        [
+          {
+            "node": "Kérésenként egy elem",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kérésenként egy elem": {
+      "main": [
+        [
+          {
+            "node": "Van tárolt PDF?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Van tárolt PDF?": {
+      "main": [
+        [
+          {
+            "node": "PDF törlése",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Kérés törlése",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF törlése": {
+      "main": [
+        [
+          {
+            "node": "Kérés törlése",
             "type": "main",
             "index": 0
           }

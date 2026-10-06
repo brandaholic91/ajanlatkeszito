@@ -427,6 +427,49 @@ def test_failed_reminder_is_logged_and_alerted_not_retried(db):
     assert subjects_for(bouncing) == []
 
 
+def stored_pdf_exists(key):
+    """Igaz, ha a fájl megvan az objektumtárolóban."""
+    listing = S3.list_objects_v2(Bucket="ajanlat-demo", Prefix=key)
+    return any(item["Key"] == key for item in listing.get("Contents", []))
+
+
+def test_expired_request_is_deleted_with_its_pdf(db):
+    """A 14 napnál régebbi kérés eltűnik: a sora, a naplója, az ajánlatai és a tárolt PDF is. A friss megmarad."""
+    old = new_sent_request(db, "regi@example.com", "1 minute")
+    fresh = new_sent_request(db, "friss@example.com", "1 minute")
+    (old_id,) = db.execute("SELECT id FROM requests WHERE public_id = %s", (old,)).fetchone()
+    (old_key,) = db.execute("SELECT pdf_key FROM requests WHERE public_id = %s", (old,)).fetchone()
+    assert stored_pdf_exists(old_key)
+    db.execute("UPDATE requests SET created_at = created_at - interval '15 days' WHERE public_id = %s", (old,))
+    db.commit()
+
+    httpx.post(FOLLOWUP, timeout=30)
+    wait_for(lambda: request_row(db, old) is None)
+
+    assert db.execute("SELECT count(*) FROM request_events WHERE request_id = %s", (old_id,)).fetchone() == (0,)
+    assert db.execute("SELECT count(*) FROM quotes WHERE request_id = %s", (old_id,)).fetchone() == (0,)
+    assert not stored_pdf_exists(old_key)
+    assert request_row(db, fresh) is not None
+
+
+def test_expired_request_without_pdf_is_deleted(db):
+    """A jóvá nem hagyott kérésnek nincs PDF-je; az is törlődik, a PDF-törlés kihagyásával."""
+    public_id = new_priced_request()
+    db.execute("UPDATE requests SET created_at = created_at - interval '15 days' WHERE public_id = %s", (public_id,))
+    db.commit()
+    httpx.post(FOLLOWUP, timeout=30)
+    wait_for(lambda: request_row(db, public_id) is None)
+
+
+def test_fresh_request_cannot_be_deleted_by_id(db):
+    """A törlő függvény a kort maga is ellenőrzi: friss kérést akkor sem töröl, ha közvetlenül hívják."""
+    public_id = new_priced_request()
+    request_id, _ = request_row(db, public_id)
+    assert db.execute("SELECT delete_expired_request(%s)", (request_id,)).fetchone() == (False,)
+    db.commit()
+    assert request_row(db, public_id) is not None
+
+
 def test_all_workflows_report_errors_to_the_followup_workflow():
     """A repóban lévő mindhárom workflow hibakezelője az Utánkövetés workflow."""
     for path in sorted((Path(__file__).parent.parent / "n8n").glob("*.json")):

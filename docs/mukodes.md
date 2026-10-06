@@ -13,11 +13,12 @@ A három workflow, a demóoldal végpontjai, a lépésnapló és az árazás sza
 | `n8n/01-feldolgozas.json` | Az első workflow (1–4. lépés), importálható az n8n-be |
 | `n8n/02-jovahagyas-kuldes.json` | A második workflow (5–7. lépés): jóváhagyás, PDF, levél |
 | `db/05_followup.sql` | Az utánkövetés adatbázis-oldala: `fail_stuck_requests` (beragadt kérések lezárása), `claim_due_reminders` (kinek jár emlékeztető) |
-| `n8n/03-utankovetes-hibakezeles.json` | A harmadik workflow (8. lépés): emlékeztető, beragadt kérések lezárása, riasztás Discordra |
+| `n8n/03-utankovetes-hibakezeles.json` | A harmadik workflow (8. lépés): emlékeztető, beragadt kérések lezárása, lejárt kérések törlése, riasztás Discordra |
+| `db/06_retention.sql` | Az adatmegőrzés adatbázis-oldala: `expired_requests` (melyik kérés járt le), `delete_expired_request` (egy lejárt kérés törlése) |
 | `pdf-service/main.py` | A PDF-készítő: FastAPI-végpont, amely a sablonból Playwrighttal PDF-et készít |
 | `pdf-service/templates/quote.html` | Az ajánlat kinézete (HTML és CSS, Jinja2 sablon) |
-| `web/` | A demóoldal (Next.js): egy oldal és négy szerveroldali végpont. Részletek lent, „A demóoldal” alatt |
-| `tests/` | Ál-modell, ál-levélküldő és ál-riasztócsatorna (`fake_llm.py`), a helyi környezet beállítása, 38 teszt |
+| `web/` | A demóoldal (Next.js): a főoldal, az adatkezelési tájékoztató és négy szerveroldali végpont. Részletek lent, „A demóoldal” alatt |
+| `tests/` | Ál-modell, ál-levélküldő és ál-riasztócsatorna (`fake_llm.py`), a helyi környezet beállítása, 41 teszt |
 | `samples/minta-ajanlat.pdf` | Egy kész mintaajánlat a terv példakéréséből |
 | `docker-compose.prod.yml` | Az éles környezet: adatbázis, PDF-készítő és demóoldal; az n8n és az objektumtároló külön gépen fut, a címeket és a jelszavakat környezeti változók adják |
 | `docker-compose.yml` | A helyi környezet: Postgres, PDF-készítő, n8n, objektumtároló (RustFS), a demóoldal, és teszthez az ál-modell |
@@ -48,20 +49,24 @@ A három workflow, a demóoldal végpontjai, a lépésnapló és az árazás sza
 
 ## Az utánkövetés és a hibakezelés (`03-utankovetes-hibakezeles.json`)
 
-Egy workflow, három ág. Az első kettőt az **Időzítő** indítja percenként (vagy a **Kézi indítás**: `POST /webhook/ajanlat-utankovetes`, üres törzzsel), a harmadikat maga az n8n, ha egy futás hibával áll le.
+Egy workflow, négy ág. Az első hármat az **Időzítő** indítja percenként (vagy a **Kézi indítás**: `POST /webhook/ajanlat-utankovetes`, üres törzzsel), a negyediket maga az n8n, ha egy futás hibával áll le.
 
 1. **Beragadt kérések.** Ha egy workflow félúton elhal, a kérés `received` vagy `approved` állapotban marad, és magától semmi nem jelöli hibásnak. A `fail_stuck_requests` lezárja (`failed`) azokat, amelyeknél az utolsó lépés óta több mint 10 perc telt el (`stuck_after_minutes`), és ha volt ilyen, egy összesítő riasztás megy. A nézőre váró (`priced`, `needs_clarification`) és a befejezett kérésekhez nem nyúl.
 2. **Emlékeztető.** A `claim_due_reminders` kiválasztja azokat a kéréseket, amelyeknek az ajánlata legalább 2 perce elment (`followup_after_minutes`), még érvényes, és még nem kaptak emlékeztetőt. A 2 perc a demó miatt ennyi, hogy a néző kivárhassa; éles működésnél 72 óra lenne (4320 perc), és az időzítőnek is elég volna negyedóránként futnia. Mindegyik egy rövid levelet kap, csatolmány nélkül. **A demóban nincs válaszfigyelés, ezért minden kiküldött ajánlat kap egy emlékeztetőt**, nem csak az, amelyikre nem jött válasz.
    - **Egy kérés legfeljebb egy emlékeztetőt kap.** A `reminded` lépés még a küldés előtt bekerül a naplóba. Fordított sorrendnél, ha a levél elmegy, de a naplózás elhasal, a következő futás újra elküldené, percenként.
    - **Újrapróbálás:** a küldés háromszor próbálkozik, két másodperc szünettel. Ha így sem megy, a workflow nem áll le: az a levél az alsó kimenetre kerül (`reminder_failed` a naplóban, riasztás), a többi kimegy. Később nem próbálja újra.
    - **A napi levélkeret közös** az ajánlatokkal (`daily_mail_limit`, 40): az `approve_request` és a `claim_due_reminders` is a ma elment `sent` és `reminded` lépéseket együtt számolja. Ami nem fér bele, másnap megy.
-3. **Hibafigyelés.** Mindhárom workflow beállításában ez a workflow a hibakezelő (`settings.errorWorkflow`). Ha bármelyik futás hibával áll le, a **Hiba egy workflow-ban** csomópont megkapja a workflow nevét, az utolsó csomópontot és a hibaüzenetet, és ezt riasztásként továbbküldi. Maga a kérés ilyenkor félúton marad; azt az 1. ág zárja le legkésőbb 11 perc múlva (10 perc a határidő, és az időzítő percenként fut).
+3. **Lejárt kérések törlése.** Az `expired_requests` kiválasztja a 14 napnál régebbi kéréseket (`delete_after_days`), futásonként legfeljebb 50-et. Mindegyiknél előbb a tárolt PDF törlődik az objektumtárolóból, utána a `delete_expired_request` törli a kérést a lépésnaplójával és az ajánlataival együtt. Az oldal adatkezelési tájékoztatója ezt a 14 napot ígéri; ha a beállítás változik, a tájékoztató szövegét (`web/app/adatkezeles/page.tsx`) is át kell írni.
+   - **A sorrend számít.** A PDF helyét a kérés sora őrzi. Ha a sor törlődne előbb, és a PDF törlése utána elhasalna, a fájl a tárolóban maradna, és semmi nem mutatna rá. Így a sor megmarad, és a következő futás újra megpróbálja.
+   - **A törlő függvény a kort maga is ellenőrzi**, ezért friss kérést akkor sem töröl, ha közvetlenül, rossz azonosítóval hívják.
+   - **Ha a tároló nem érhető el**, a futás hibával áll le, és erről riasztás megy. Amíg a hiba fennáll, ez percenként ismétlődik.
+4. **Hibafigyelés.** Mindhárom workflow beállításában ez a workflow a hibakezelő (`settings.errorWorkflow`). Ha bármelyik futás hibával áll le, a **Hiba egy workflow-ban** csomópont megkapja a workflow nevét, az utolsó csomópontot és a hibaüzenetet, és ezt riasztásként továbbküldi. Maga a kérés ilyenkor félúton marad; azt az 1. ág zárja le legkésőbb 11 perc múlva (10 perc a határidő, és az időzítő percenként fut).
 
 A riasztások a `Riasztás (Discord)` hitelesítő adatban megadott webhook címre mennek. Helyben ez az ál-riasztócsatorna (`http://fake-llm:8399/discord`).
 
 ## A demóoldal (`web/`)
 
-Egyetlen oldal: űrlap, élő lépéslista órával, az elkészült ajánlat, a „Mehet” gomb és a PDF letöltése. **A böngésző csak a Next.js alkalmazással beszél.** Az n8n, a Postgres és az objektumtároló a belső hálózaton marad, ezeket a szerveroldali végpontok (route handlerek) érik el. Így a webhookok címe és a tároló kulcsa sosem jut el a böngészőig.
+A főoldal: űrlap, élő lépéslista órával, az elkészült ajánlat, a „Mehet” gomb és a PDF letöltése. Mellette egy szöveges oldal van, az adatkezelési tájékoztató (`/adatkezeles`). **A böngésző csak a Next.js alkalmazással beszél.** Az n8n, a Postgres és az objektumtároló a belső hálózaton marad, ezeket a szerveroldali végpontok (route handlerek) érik el. Így a webhookok címe és a tároló kulcsa sosem jut el a böngészőig.
 
 Egy kérés útja a négy végponton:
 

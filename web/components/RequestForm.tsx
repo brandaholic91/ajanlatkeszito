@@ -1,5 +1,6 @@
 // Az űrlap: a kérés szövege, az e-mail-cím, a példagomb és a beküldés.
 // Saját állapota nincs: az értékeket a szülőtől (Demo) kapja, és a változást függvényhíváson át jelzi vissza.
+import Link from "next/link";
 import { MAX_TEXT_LENGTH } from "@/lib/validation";
 import { SpinnerIcon } from "./Icons";
 
@@ -72,7 +73,12 @@ export function RequestForm(props: RequestFormProps) {
           onChange={(event) => onEmailChange(event.target.value)}
         />
         <p id="request-email-hint" className="text-sm text-muted">
-          Az e-mail-címed nem kerül a nyelvi modell elé, csak az ajánlat kiküldéséhez kell.
+          Az e-mail-címed nem kerül a nyelvi modell elé, csak az ajánlat kiküldéséhez kell. A kérést 14 nap után
+          töröljük; részletek az{" "}
+          <Link className="underline underline-offset-2" href="/adatkezeles">
+            adatkezelési tájékoztatóban
+          </Link>
+          .
         </p>
       </div>
 
