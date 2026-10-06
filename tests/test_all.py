@@ -6,9 +6,12 @@ Három dolgot ellenőriznek:
   3. a teljes lánc működik: webhook -> (ál-)modell -> árazás -> PDF.
 """
 
+import hashlib
 import io
 import json
+import uuid
 
+import boto3
 import httpx
 import psycopg
 import pytest
@@ -16,7 +19,16 @@ from pypdf import PdfReader
 
 DB = "postgresql://ajanlat:ajanlat-dev@127.0.0.1:5544/ajanlat"
 WEBHOOK = "http://127.0.0.1:5679/webhook/ajanlatkeres"
+APPROVE = "http://127.0.0.1:5679/webhook/ajanlat-jovahagyas"
 PDF = "http://127.0.0.1:8300/render"
+FAKE_MAIL = "http://127.0.0.1:8399/emails"  # az ál-levélküldő; megmondja, mit kapott csatolmányként
+S3 = boto3.client(  # a helyi objektumtároló (RustFS), a docker-compose.yml-ben megadott helyi kulccsal
+    "s3",
+    endpoint_url="http://127.0.0.1:9100",
+    aws_access_key_id="ajanlat-dev",
+    aws_secret_access_key="ajanlat-dev-secret",
+    region_name="us-east-1",
+)
 
 EXAMPLE_TEXT = (
     "Új irodát nyitunk 40 fővel. Kell 40 mobil-előfizetés, ebből 10 korlátlan adattal, "
@@ -143,3 +155,87 @@ def test_end_to_end_unparseable_answer_asks_back():
     """Ha a modell nem JSON-t ad vissza, nem készül ajánlat."""
     result = httpx.post(WEBHOOK, json={"email": "vevo@example.com", "text": "asdf qwer"}, timeout=30).json()
     assert result["status"] == "needs_clarification"
+
+
+def test_event_log_follows_the_request(db):
+    """A demóoldal a lépésnaplóból rajzol: a saját azonosítójával küldött kérés lépései sorban megvannak."""
+    public_id = str(uuid.uuid4())
+    result = httpx.post(
+        WEBHOOK, json={"email": "vevo@example.com", "text": EXAMPLE_TEXT, "public_id": public_id}, timeout=30
+    ).json()
+    assert result["public_id"] == public_id
+    steps = db.execute(
+        "SELECT e.step FROM request_events e JOIN requests r ON r.id = e.request_id"
+        " WHERE r.public_id = %s ORDER BY e.id",
+        (public_id,),
+    ).fetchall()
+    assert [step for (step,) in steps] == ["received", "extracted", "checked", "priced"]
+
+
+# --- 4. Jóváhagyás és küldés ---
+
+
+def new_priced_request():
+    """Beküld egy árazható kérést, és visszaadja a nyilvános azonosítóját."""
+    public_id = str(uuid.uuid4())
+    result = httpx.post(
+        WEBHOOK, json={"email": "vevo@example.com", "text": EXAMPLE_TEXT, "public_id": public_id}, timeout=30
+    ).json()
+    assert result["status"] == "priced"
+    return public_id
+
+
+def steps_of(db, public_id):
+    rows = db.execute(
+        "SELECT e.step FROM request_events e JOIN requests r ON r.id = e.request_id"
+        " WHERE r.public_id = %s ORDER BY e.id",
+        (public_id,),
+    ).fetchall()
+    return [step for (step,) in rows]
+
+
+def test_approval_makes_pdf_and_sends_mail(db):
+    """Az ál-levélküldő csak akkor fogadja el a kérést, ha a csatolmány valódi PDF."""
+    public_id = new_priced_request()
+    response = httpx.post(APPROVE, json={"public_id": public_id}, timeout=60)
+    assert response.status_code == 200
+    assert response.json()["status"] == "sent"
+    assert steps_of(db, public_id)[-3:] == ["approved", "pdf_stored", "sent"]
+
+
+def test_stored_pdf_is_the_mailed_pdf(db):
+    """Az objektumtárolóban ugyanaz a fájl van, bájtra, mint ami levélben kiment."""
+    public_id = new_priced_request()
+    number = httpx.post(APPROVE, json={"public_id": public_id}, timeout=60).json()["number"]
+    (key,) = db.execute("SELECT pdf_key FROM requests WHERE public_id = %s", (public_id,)).fetchone()
+    assert key == f"{number}.pdf"
+
+    stored = S3.get_object(Bucket="ajanlat-demo", Key=key)["Body"].read()
+    assert stored.startswith(b"%PDF")
+    mailed = httpx.get(f"{FAKE_MAIL}/{key}").json()["sha256"]
+    assert hashlib.sha256(stored).hexdigest() == mailed
+
+
+def test_second_approval_is_refused(db):
+    """Dupla kattintásra nem megy két levél."""
+    public_id = new_priced_request()
+    assert httpx.post(APPROVE, json={"public_id": public_id}, timeout=60).status_code == 200
+    second = httpx.post(APPROVE, json={"public_id": public_id}, timeout=60)
+    assert second.status_code == 409
+    assert second.json()["status"] == "not_approvable"
+    assert steps_of(db, public_id).count("sent") == 1
+
+
+def test_unknown_request_cannot_be_approved():
+    response = httpx.post(APPROVE, json={"public_id": str(uuid.uuid4())}, timeout=60)
+    assert response.status_code == 409
+    assert response.json()["status"] == "not_found"
+
+
+def test_daily_mail_limit_turns_off_sending(db):
+    """Ha a napi keret elfogyott, a jóváhagyás megtörténik, de levél nem megy."""
+    public_id = new_priced_request()
+    result = db.execute("SELECT approve_request(%s::uuid, 0)", (public_id,)).fetchone()[0]
+    db.rollback()  # csak a függvény válasza kell, a kérés maradjon jóváhagyatlan
+    assert result["status"] == "approved"
+    assert result["send_email"] is False

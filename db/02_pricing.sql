@@ -122,21 +122,34 @@ LANGUAGE sql STABLE AS $$
 $$;
 
 
+-- Egy lépés beírása a lépésnaplóba. A workflow-k is ezt hívják: SELECT log_event(<kérés>, '<lépés>');
+CREATE FUNCTION log_event(p_request_id bigint, p_step text) RETURNS void
+LANGUAGE sql AS $$
+    INSERT INTO request_events (request_id, step) VALUES (p_request_id, p_step);
+$$;
+
+
 -- A 3–4. lépés egyben, ezt hívja az n8n: ellenőriz, áraz, ment, és visszaadja az eredményt.
 -- Ha a kérésben nincs hűségidő, mindkét változat (12 és 24 hónap) elkészül.
+-- Közben a lépésnaplóba is ír: extracted (megjött a modell válasza), checked, majd priced vagy needs_clarification.
 CREATE FUNCTION process_request(p_request_id bigint, p_extracted jsonb) RETURNS jsonb
 LANGUAGE plpgsql AS $$
 DECLARE
-    v_problems jsonb := check_request(p_extracted);
+    v_problems jsonb;
     v_terms    integer[];
     v_term     integer;
     v_number   text;
     v_quotes   jsonb := '[]'::jsonb;
 BEGIN
+    PERFORM log_event(p_request_id, 'extracted');
+    v_problems := check_request(p_extracted);
+    PERFORM log_event(p_request_id, 'checked');
+
     IF jsonb_array_length(v_problems) > 0 THEN
         UPDATE requests
         SET status = 'needs_clarification', extracted = p_extracted, problems = v_problems
         WHERE id = p_request_id;
+        PERFORM log_event(p_request_id, 'needs_clarification');
         RETURN jsonb_build_object('status', 'needs_clarification', 'problems', v_problems, 'quotes', v_quotes);
     END IF;
 
@@ -160,6 +173,7 @@ BEGIN
     UPDATE requests
     SET status = 'priced', extracted = p_extracted, problems = '[]'::jsonb
     WHERE id = p_request_id;
+    PERFORM log_event(p_request_id, 'priced');
     RETURN jsonb_build_object('status', 'priced', 'problems', v_problems, 'quotes', v_quotes);
 END;
 $$;

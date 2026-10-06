@@ -66,9 +66,9 @@
       ],
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO requests (email, raw_text) VALUES ($1, $2) RETURNING id AS request_id;",
+        "query": "WITH r AS (\n  INSERT INTO requests (email, raw_text, public_id)\n  VALUES ($1, $2, COALESCE($3::uuid, gen_random_uuid()))\n  RETURNING id, public_id\n), e AS (\n  INSERT INTO request_events (request_id, step) SELECT id, 'received' FROM r\n)\nSELECT id AS request_id, public_id FROM r;",
         "options": {
-          "queryReplacement": "={{ [ $('Webhook').item.json.body.email, $('Webhook').item.json.body.text ] }}"
+          "queryReplacement": "={{ [ $('Webhook').item.json.body.email, $('Webhook').item.json.body.text, $('Webhook').item.json.body.public_id ?? null ] }}"
         }
       },
       "credentials": {
@@ -225,7 +225,7 @@
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { request_id: $('Kérés mentése').item.json.request_id, ...$json.result } }}",
+        "responseBody": "={{ { request_id: $('Kérés mentése').item.json.request_id, public_id: $('Kérés mentése').item.json.public_id, ...$json.result } }}",
         "options": {}
       }
     },
@@ -240,7 +240,7 @@
       ],
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ { request_id: $('Kérés mentése').item.json.request_id, ...$json.result } }}",
+        "responseBody": "={{ { request_id: $('Kérés mentése').item.json.request_id, public_id: $('Kérés mentése').item.json.public_id, ...$json.result } }}",
         "options": {}
       }
     }

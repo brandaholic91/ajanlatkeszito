@@ -1,0 +1,524 @@
+{
+  "id": "ajanlatJovahagyas",
+  "name": "Ajánlat 2 – Jóváhagyás és küldés",
+  "nodes": [
+    {
+      "id": "64205009-f148-40a9-9571-53caef479c5a",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ajanlat-jovahagyas",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "ajanlat-jovahagyas"
+    },
+    {
+      "id": "dbbc1fa9-b615-432b-af36-59a81cb93325",
+      "name": "Beállítások",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "eb40877f-03b0-47ee-a634-d3c1292c6bbc",
+              "name": "pdf_url",
+              "value": "http://pdf:8000/render",
+              "type": "string"
+            },
+            {
+              "id": "664d52da-5d1e-4945-86a3-b8211b97f05b",
+              "name": "mail_url",
+              "value": "https://api.resend.com/emails",
+              "type": "string"
+            },
+            {
+              "id": "85105038-4206-4247-8a71-e367dd534907",
+              "name": "mail_from",
+              "value": "Kéktorony Telekom – demó <ajanlat@growthframe.hu>",
+              "type": "string"
+            },
+            {
+              "id": "3c6a488f-93fa-4b43-8d1e-1e40e3edaec0",
+              "name": "pdf_bucket",
+              "value": "ajanlat-demo",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "notes": "A PDF-készítő címe, a tároló bucketje, a levélküldő címe és a feladó itt cserélhető, egy helyen."
+    },
+    {
+      "id": "49ac23d0-e16f-4f5d-8b17-56ce28f6311e",
+      "name": "Jóváhagyás",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT approve_request($1::uuid) AS result;",
+        "options": {
+          "queryReplacement": "={{ [ $('Webhook').item.json.body.public_id ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "ajanlatDbCred0001",
+          "name": "Ajánlat DB"
+        }
+      }
+    },
+    {
+      "id": "7113199e-8acb-4672-8ffa-1e934e976296",
+      "name": "Jóváhagyható?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        660,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "776609b5-0933-45e8-b18f-74ec171a4d62",
+              "leftValue": "={{ $json.result.status }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "rightValue": "approved"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3076ab62-5ddf-4642-a067-976b4c26e0d4",
+      "name": "PDF készítése",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Beállítások').item.json.pdf_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  customer_email: $json.result.customer_email,\n  request_text: $json.result.request_text,\n  quotes: $json.result.quotes\n}) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "a87177e2-d7bb-4d28-bb15-a270858d21d4",
+      "name": "PDF szöveggé",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "operation": "binaryToPropery",
+        "binaryPropertyName": "data",
+        "destinationKey": "data",
+        "options": {
+          "keepSource": "both"
+        }
+      },
+      "notes": "A PDF bájtjaiból base64 szöveg lesz, mert a levélküldő JSON-ban így várja a csatolmányt. A fájl maga is megmarad, mert a következő csomópont azt tölti fel."
+    },
+    {
+      "id": "191a458b-3895-4166-9f34-4c475ae780f9",
+      "name": "PDF tárolása",
+      "type": "n8n-nodes-base.s3",
+      "typeVersion": 1,
+      "position": [
+        1320,
+        0
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "bucketName": "={{ $('Beállítások').item.json.pdf_bucket }}",
+        "fileName": "={{ $('Jóváhagyás').item.json.result.quotes[0].number + '.pdf' }}",
+        "binaryData": true,
+        "binaryPropertyName": "data",
+        "additionalFields": {},
+        "tagsUi": {}
+      },
+      "credentials": {
+        "s3": {
+          "id": "ajanlatS3Cred0001",
+          "name": "PDF tároló"
+        }
+      },
+      "notes": "A kiküldött PDF az objektumtárolóba kerül, az ajánlat sorszámával. A letöltés később ezt a fájlt adja vissza."
+    },
+    {
+      "id": "4af7ca8a-5b3b-4597-99fd-9619712ad05e",
+      "name": "PDF tárolva",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1540,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT store_pdf_key($1::bigint, $2);",
+        "options": {
+          "queryReplacement": "={{ [ $('Jóváhagyás').item.json.result.request_id, $('Jóváhagyás').item.json.result.quotes[0].number + '.pdf' ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "ajanlatDbCred0001",
+          "name": "Ajánlat DB"
+        }
+      }
+    },
+    {
+      "id": "4c265c70-f3fc-4e03-a162-1a91904757a6",
+      "name": "Levél küldhető?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1760,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "4da5fa8e-ad5d-44a0-b27c-f6e4f3596b10",
+              "leftValue": "={{ $('Jóváhagyás').item.json.result.send_email }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "f9666347-e936-41c7-93ed-cd6baa712afc",
+      "name": "Levél küldése",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Beállítások').item.json.mail_url }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  from: $('Beállítások').item.json.mail_from,\n  to: [ $('Jóváhagyás').item.json.result.customer_email ],\n  subject: 'Ajánlat ' + $('Jóváhagyás').item.json.result.quotes[0].number + ' – Kéktorony Telekom (demó)',\n  html: '<p>Tisztelt Érdeklődő!</p><p>Köszönjük az ajánlatkérését. Az elkészült ajánlatot csatolva küldjük; a sorszáma <b>' + $('Jóváhagyás').item.json.result.quotes[0].number + '</b>, és <b>' + $('Jóváhagyás').item.json.result.quotes[0].valid_until + '</b>-ig érvényes.</p><p>Üdvözlettel:<br>Kéktorony Telekom</p><hr><p style=\"color:#666;font-size:12px\">Ez egy demó. A Kéktorony Telekom kitalált cég, kitalált árakkal; ez nem valós ajánlat. A levelet azért kapta, mert ezt az e-mail-címet adták meg a demóoldalon.</p>',\n  attachments: [ {\n    filename: $('Jóváhagyás').item.json.result.quotes[0].number + '.pdf',\n    content: $('PDF szöveggé').item.json.data\n  } ]\n}) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ajanlatResendCr01",
+          "name": "Resend kulcs"
+        }
+      }
+    },
+    {
+      "id": "0d6899e2-4715-4d75-9a55-711f7ebb8c0b",
+      "name": "Elküldve",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2200,
+        0
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT set_status($1::bigint, 'sent');",
+        "options": {
+          "queryReplacement": "={{ [ $('Jóváhagyás').item.json.result.request_id ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "ajanlatDbCred0001",
+          "name": "Ajánlat DB"
+        }
+      }
+    },
+    {
+      "id": "b184812d-afcc-4779-817a-abc9e666bd04",
+      "name": "Válasz: elküldve",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2420,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'sent', number: $('Jóváhagyás').item.json.result.quotes[0].number } }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "25b91d2b-dd03-40d9-833a-e3647762aa85",
+      "name": "Válasz: nem hagyható jóvá",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.result }}",
+        "options": {
+          "responseCode": 409
+        }
+      }
+    },
+    {
+      "id": "b4c67bd3-5d39-42a0-9cc9-ebeef5c49b16",
+      "name": "Levél kihagyva",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1980,
+        200
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT log_event($1::bigint, 'email_skipped');",
+        "options": {
+          "queryReplacement": "={{ [ $('Jóváhagyás').item.json.result.request_id ] }}"
+        }
+      },
+      "credentials": {
+        "postgres": {
+          "id": "ajanlatDbCred0001",
+          "name": "Ajánlat DB"
+        }
+      },
+      "notes": "Elfogyott a napi levélkeret. A PDF elkészült, az oldalról letölthető."
+    },
+    {
+      "id": "05945834-02d0-4558-8209-dd72b402a891",
+      "name": "Válasz: levél nélkül",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2200,
+        200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { status: 'email_skipped', number: $('Jóváhagyás').item.json.result.quotes[0].number } }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Beállítások",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Beállítások": {
+      "main": [
+        [
+          {
+            "node": "Jóváhagyás",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jóváhagyás": {
+      "main": [
+        [
+          {
+            "node": "Jóváhagyható?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Jóváhagyható?": {
+      "main": [
+        [
+          {
+            "node": "PDF készítése",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Válasz: nem hagyható jóvá",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF készítése": {
+      "main": [
+        [
+          {
+            "node": "PDF szöveggé",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF szöveggé": {
+      "main": [
+        [
+          {
+            "node": "PDF tárolása",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Levél küldhető?": {
+      "main": [
+        [
+          {
+            "node": "Levél küldése",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Levél kihagyva",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Levél küldése": {
+      "main": [
+        [
+          {
+            "node": "Elküldve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Elküldve": {
+      "main": [
+        [
+          {
+            "node": "Válasz: elküldve",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Levél kihagyva": {
+      "main": [
+        [
+          {
+            "node": "Válasz: levél nélkül",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF tárolása": {
+      "main": [
+        [
+          {
+            "node": "PDF tárolva",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PDF tárolva": {
+      "main": [
+        [
+          {
+            "node": "Levél küldhető?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": false,
+  "pinData": {}
+}

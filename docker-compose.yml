@@ -38,14 +38,46 @@ services:
       db:
         condition: service_healthy
 
+  # Objektumtároló a kiküldött PDF-eknek (S3-kompatibilis). Ugyanaz a verzió, mint a martech-lab gépen.
+  rustfs:
+    image: rustfs/rustfs:1.0.0
+    user: "0:0" # helyben rootként fut, hogy ne kelljen külön lépésben átállítani az adatmappa tulajdonosát
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_ACCESS_KEY: ajanlat-dev # csak helyi fejlesztéshez
+      RUSTFS_SECRET_KEY: ajanlat-dev-secret
+    ports:
+      - "127.0.0.1:9100:9000"
+    volumes:
+      - rustfs-data:/data
+
+  # Egyszer lefut, létrehozza a bucketet, és kilép. A curl maga írja alá a kérést (--aws-sigv4), nem kell hozzá S3-kliens.
+  rustfs-init:
+    image: curlimages/curl:8.11.1
+    depends_on:
+      - rustfs
+    environment:
+      S3: --aws-sigv4 aws:amz:us-east-1:s3 --user ajanlat-dev:ajanlat-dev-secret
+    entrypoint:
+      - sh
+      - -c
+      - |
+        until curl -sf -o /dev/null $$S3 -I http://rustfs:9000/ajanlat-demo \
+           || curl -sf -o /dev/null $$S3 -X PUT http://rustfs:9000/ajanlat-demo; do sleep 1; done
+        echo "bucket kész"
+
   # Ál-modell, csak teszthez: docker compose --profile test up -d
   fake-llm:
     image: python:3.13-alpine
     profiles: ["test"]
     command: python /fake_llm.py
+    ports:
+      - "127.0.0.1:8399:8399" # a tesztek innen kérdezik le, mit kapott az ál-levélküldő
     volumes:
       - ./tests/fake_llm.py:/fake_llm.py:ro
 
 volumes:
   db-data:
   n8n-data:
+  rustfs-data:
