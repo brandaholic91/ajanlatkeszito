@@ -2,3 +2,4 @@
 __pycache__/
 .pytest_cache/
 .env
+.claude/skills/impeccable/scripts/bin/
