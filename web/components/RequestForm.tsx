@@ -40,6 +40,7 @@ export function RequestForm(props: RequestFormProps) {
           rows={5}
           required
           maxLength={MAX_TEXT_LENGTH}
+          aria-describedby="request-text-hint"
           placeholder="Írd le saját szavaiddal, mire kérsz ajánlatot…"
           value={text}
           onChange={(event) => onTextChange(event.target.value)}
@@ -49,6 +50,10 @@ export function RequestForm(props: RequestFormProps) {
             Példakérés beírása
           </button>
         </div>
+        {/* aria-describedby köti a mezőhöz: a képernyőolvasó a mező után ezt is felolvassa. */}
+        <p id="request-text-hint" className="text-sm text-muted">
+          A kérés szövegét egy külső nyelvi modell dolgozza fel. Ne írj bele valódi személyes vagy céges adatot.
+        </p>
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -61,10 +66,14 @@ export function RequestForm(props: RequestFormProps) {
           type="email"
           required
           autoComplete="email"
+          aria-describedby="request-email-hint"
           placeholder="nev@ceg.hu"
           value={email}
           onChange={(event) => onEmailChange(event.target.value)}
         />
+        <p id="request-email-hint" className="text-sm text-muted">
+          Az e-mail-címed nem kerül a nyelvi modell elé, csak az ajánlat kiküldéséhez kell.
+        </p>
       </div>
 
       <div>
