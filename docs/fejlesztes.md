@@ -58,3 +58,30 @@ Ha az `db/*.sql` változik, a Postgres magától nem veszi át, mert csak üres 
 - **A cégnév munkanév** („Kéktorony Telekom Zrt."), nincs ellenőrizve, hogy létezik-e ilyen cég. Egy helyen cserélhető: `pdf-service/main.py`, `COMPANY`.
 - **A `tests/dev-credentials.json` jelszava csak a helyi adatbázisé**, valódi kulcs nincs a repóban.
 - A workflow-k hitelesítő adatai név szerint: `Ajánlat DB` (Postgres), `LLM kulcs` és `Resend kulcs` (mindkettő Header Auth: `Authorization` = `Bearer <kulcs>`), `PDF tároló` (S3: végpont, kulcspár, `forcePathStyle` bekapcsolva), `Riasztás (Discord)` (Discord Webhook: a webhook címe).
+
+## Az éles objektumtároló jogai
+
+Élesben az n8n saját kulcspárral éri el a tárolót, és csak az `ajanlat-demo` bucketet. A kulcshoz tartozó policyt a RustFS konzolján kézzel kell megírni. Három művelet kell bele: írás (PDF tárolása), olvasás, és **törlés** (a 14 napos adatmegőrzés törli vele a lejárt kérések PDF-jét).
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetBucketLocation", "s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::ajanlat-demo"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+      "Resource": ["arn:aws:s3:::ajanlat-demo/*"]
+    }
+  ]
+}
+```
+
+- **Az első szabály a bucketre szól**, a második a benne lévő fájlokra (a `/*` a végén). A `s3:GetBucketLocation` azért kell, mert az n8n S3-csomópontja minden művelet előtt lekérdezi a bucket régióját.
+- **A `s3:DeleteObject` nélkül a tárolás működik, a törlés nem**, és ez csak az első lejárt kérésnél derül ki: az Utánkövetés a „PDF törlése” lépésnél `403 AccessDenied`-del áll le, percenként riaszt, és a kérés sora megmarad (2026-10-08-án így derült ki élesben).
+- **A demóoldal külön, csak olvasó kulcsot kap:** a PDF letöltéséhez elég a `s3:GetObject`.
+- **Kipróbálás élesben, várakozás nélkül:** egy tesztkérés `created_at` értékét 14 napnál régebbre kell írni; az Utánkövetés a következő percben törli a PDF-et és a kérést. Ha hibára fut, a dátum visszaírása leállítja a riasztást.
