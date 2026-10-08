@@ -8,7 +8,7 @@ Szabad szöveges ajánlatkérésből egy percen belül márkázott PDF-ajánlat.
 
 1. A néző beír egy ajánlatkérést, ahogy egy ügyfél e-mailben írná.
 2. Egy nyelvi modell kiolvassa belőle a tételeket és a mennyiségeket.
-3. Az adatbázis ellenőrzi a tételeket, és kiszámolja az árat a mennyiségi kedvezménnyel. Ha valami nem egyértelmű, ajánlat helyett visszakérdezés készül.
+3. Az adatbázis ellenőrzi a tételeket, és kiszámolja az árat a mennyiségi kedvezménnyel. Ha valami nem egyértelmű, ajánlat nem készül: az oldal kiírja, mit kell pontosítani. Levél ilyenkor nem megy.
 4. A néző az értékesítő szerepében jóváhagyja az ajánlatot.
 5. Elkészül a PDF, bekerül a tárolóba, és e-mailben kimegy.
 6. Két perc múlva emlékeztető megy az ajánlatról.
